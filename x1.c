@@ -11,11 +11,6 @@
 
        seperate directory for year
        seperate file for each day
-       write data to socket
-
-       New Program:
-          - reads from socket 1:    reads latest date/temp.  Stores in memory
-          - reads from socket 2:    writes date/temp from memory
 
 */
 
@@ -24,15 +19,13 @@ char           outdata[80];
 char           thedate[40];
 float          PreviousReading;
 
-unsigned char  usbdat[8] = { 1,0x80,0x33,1,0,0,0,0 };    // magic byte sequence to read the temperature
+unsigned char  usbdat[8] = { 1,0x80,0x33,1,0,0,0,0 };
 
 char          *HIDname       = "/dev/hidraw1";
 char          *TemperPidfile = "/tmp/temper.pid";
-char          *tmpdateName   = "/tmp/tmpdate";
-char          *logfile       = "/home/johnr/tempdata.log";
 
 //
-//   input data:  "10/18/18,10:52:45"
+//   /tmp/tmpdate example:  10/18/18,10:52:45
 //
 //   The year will be '69' if ntp date is not set
 //
@@ -43,13 +36,13 @@ int read_thedate()
     int   lfd,lenr;
     char *S;
 
-    lfd  = open(tmpdateName,O_RDONLY);
+    lfd  = open("/tmp/tmpdate",O_RDONLY);
     lenr = read(lfd,thedate,80);
     close(lfd);
 
     thedate[lenr-1] = 0;
 
-    S = strrchr(thedate,'/');         // finds the last '/' in the string
+    S = strrchr(thedate,'/');
 
     if( S == NULL || *(S+1) == '6' )
         return 0;
@@ -102,8 +95,7 @@ int main()
         memset(tbuf,0,8);
         memset(thedate,0,40);
 
-        sprintf(tbuf, "/bin/date +%D,%T > %s", tmpdateName);
-        system(tbuf);
+        system("/bin/date +%D,%T > /tmp/tmpdate");
 
         gettimeofday(&tv1,&tz);     // timestamp just before the write
         write(fd,usbdat,8);
@@ -162,7 +154,7 @@ int main()
 
             if( ok_to_log == 1 )
             {
-                fd = open(logfile,O_WRONLY|O_APPEND);
+                fd = open("/home/johnr/tempdata.log",O_WRONLY|O_APPEND);
                 write(fd,outdata,strlen(outdata));
                 close(fd);
             }
@@ -171,7 +163,7 @@ int main()
         gettimeofday(&tv2,&tz);
 
         secsdiff  = tv2.tv_sec - tv1.tv_sec;
-        usecsdiff = (secsdiff * 1000000) + (tv2.tv_usec - tv1.tv_usec + 68000);
+        usecsdiff = (secsdiff * 1000000) + (tv2.tv_usec - tv1.tv_usec + 66000);
 
         usleep(10000000 - usecsdiff);
     }
