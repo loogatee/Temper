@@ -102,7 +102,7 @@ int main()
         memset(tbuf,0,8);
         memset(thedate,0,40);
 
-        sprintf(tbuf, "/bin/date +%D,%T > %s", tmpdateName);
+        sprintf(tbuf, "/bin/date +%%D,%%T > %s", tmpdateName);
         system(tbuf);
 
         gettimeofday(&tv1,&tz);     // timestamp just before the write
@@ -171,7 +171,7 @@ int main()
         gettimeofday(&tv2,&tz);
 
         secsdiff  = tv2.tv_sec - tv1.tv_sec;
-        usecsdiff = (secsdiff * 1000000) + (tv2.tv_usec - tv1.tv_usec + 68000);
+        usecsdiff = (secsdiff * 1000000) + (tv2.tv_usec - tv1.tv_usec + 70000);
 
         usleep(10000000 - usecsdiff);
     }
