@@ -4,6 +4,7 @@
 #include <sys/time.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <stdlib.h>
 #include <string.h>
 
 /*
@@ -26,7 +27,7 @@ float          PreviousReading;
 
 unsigned char  usbdat[8] = { 1,0x80,0x33,1,0,0,0,0 };    // magic byte sequence to read the temperature
 
-char          *HIDname       = "/dev/hidraw1";
+char          *HIDname       = "/dev/hidraw2";
 char          *TemperPidfile = "/tmp/temper.pid";
 char          *tmpdateName   = "/tmp/tmpdate";
 char          *logfile       = "/home/johnr/tempdata.log";
@@ -62,7 +63,7 @@ int read_thedate()
 int main()
 {
     int             fd,retv,counter,lenr,temperature,ok_to_log;
-    unsigned int    secsdiff,usecsdiff;
+    unsigned int    secsdiff,usecsdiff,tot;
     char            tbuf[80];
     struct timeval  tv,tv1,tv2;
     struct timezone tz;
@@ -70,8 +71,9 @@ int main()
     float           tempC,tempF;
     fd_set          rfds;
 
+
     if( fork() )                       // child executes as background process
-        return;
+        return 0;
 
     PreviousReading = -1000.0;         // Big number is an initial condition
 
@@ -79,6 +81,7 @@ int main()
     fd = open(TemperPidfile,O_WRONLY|O_CREAT,0644);
     write(fd,tbuf,strlen(tbuf));
     close(fd);
+
 
     while(1)
     {
@@ -88,7 +91,8 @@ int main()
         {
             sprintf(tbuf, "ERROR opening %s\n\r", HIDname);
             perror(tbuf);
-            return 1;
+            sleep(20);
+            break;
         }
 
         FD_ZERO(&rfds);
@@ -103,9 +107,10 @@ int main()
         memset(thedate,0,40);
 
         sprintf(tbuf, "/bin/date +%%D,%%T > %s", tmpdateName);
+
+        gettimeofday(&tv1,&tz);     // timestamp
         system(tbuf);
 
-        gettimeofday(&tv1,&tz);     // timestamp just before the write
         write(fd,usbdat,8);
 
         while(1)
@@ -115,22 +120,23 @@ int main()
              if( retv == -1 )
              {
                  perror("select()");
-                 return 1;
+                 close(fd);
+                 sleep(20);
+                 goto try_again;
              }
              else if( retv )
              {
                  if( (retv = read(fd,&tbuf[lenr],8)) < 0 )
                  {
                      perror("read()");
-                     return 1;
+                     close(fd);
+                     sleep(20);
+                     goto try_again;
                  }
                  lenr += retv;
              }
-             else
-             {
-                 if( ++counter > 3)
-                     break;
-             }
+             else if( ++counter > 3)
+                 break;
         }
 
         close(fd);
@@ -162,18 +168,24 @@ int main()
 
             if( ok_to_log == 1 )
             {
-                fd = open(logfile,O_WRONLY|O_APPEND);
+                fd = open(logfile,O_WRONLY|O_APPEND|O_CREAT,0666);
                 write(fd,outdata,strlen(outdata));
                 close(fd);
             }
         }
 
+try_again:
+
         gettimeofday(&tv2,&tz);
 
-        secsdiff  = tv2.tv_sec - tv1.tv_sec;
-        usecsdiff = (secsdiff * 1000000) + (tv2.tv_usec - tv1.tv_usec + 70000);
+        // trial and error on the fudge of 60100.
+        // at least on 'wally' it works!
+        usecsdiff = abs(tv2.tv_usec - tv1.tv_usec) + 60100;
+        tot       = 10000000 - usecsdiff;
 
-        usleep(10000000 - usecsdiff);
+        //printf("secs: %ld   usecs: %ld,   usecsdiff: %d    tot: %d\n", tv1.tv_sec, tv1.tv_usec, usecsdiff, tot);
+
+        usleep(tot);
     }
 }
 
