@@ -63,7 +63,7 @@ int read_thedate()
 int main()
 {
     int             fd,retv,counter,lenr,temperature,ok_to_log;
-    unsigned int    secsdiff,usecsdiff,tot;
+    unsigned int    secsdiff,usecsdiff,tot,BaseTimeStamp,firstflag;
     char            tbuf[80];
     struct timeval  tv,tv1,tv2;
     struct timezone tz;
@@ -75,6 +75,7 @@ int main()
     if( fork() )                       // child executes as background process
         return 0;
 
+    firstflag       = 0;
     PreviousReading = -1000.0;         // Big number is an initial condition
 
     sprintf(tbuf,"%d",(unsigned int)getpid());
@@ -99,7 +100,7 @@ int main()
         FD_SET(fd,&rfds);
 
         tv.tv_sec  = 0;
-        tv.tv_usec = 100000;
+        tv.tv_usec = 100000;    // input into the select call.  100,000usec = 100msec = .1sec
         counter    = 0;
         lenr       = 0;
 
@@ -108,7 +109,13 @@ int main()
 
         sprintf(tbuf, "/bin/date +%%D,%%T > %s", tmpdateName);
 
-        gettimeofday(&tv1,&tz);     // timestamp
+        gettimeofday(&tv1,&tz);
+
+        if( firstflag == 0 )
+        {
+            firstflag     = 1;
+            BaseTimeStamp = tv1.tv_sec;
+        }
         system(tbuf);
 
         write(fd,usbdat,8);
@@ -156,7 +163,7 @@ int main()
                 tempF           = (tempC * 1.8) + 32.0;
                 PreviousReading = tempF;
 
-                sprintf(outdata,"%s,%.1f\n",thedate,tempF);
+                sprintf(outdata,"%ld,%s,%.1f\n",tv1.tv_sec-BaseTimeStamp,thedate,tempF);
             }
             else
             {
