@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 /*
     log directory needs to be accessible by monkey
@@ -27,9 +28,8 @@ float          PreviousReading;
 
 unsigned char  usbdat[8] = { 1,0x80,0x33,1,0,0,0,0 };    // magic byte sequence to read the temperature
 
-char          *HIDname       = "/dev/hidraw1";
+char          *HIDname       = "/dev/hidraw2";
 char          *TemperPidfile = "/var/tmp/temper.pid";
-char          *tmpdateName   = "/var/tmp/tmpdate";
 char          *logfile       = "/home/johnr/tempdata.log";
 
 //
@@ -39,16 +39,9 @@ char          *logfile       = "/home/johnr/tempdata.log";
 //
 //   1=good, 0=toss
 //
-int read_thedate()
+int check_thedate()
 {
-    int   lfd,lenr;
     char *S;
-
-    lfd  = open(tmpdateName,O_RDONLY);
-    lenr = read(lfd,thedate,80);
-    close(lfd);
-
-    thedate[lenr-1] = 0;
 
     S = strrchr(thedate,'/');         // finds the last '/' in the string
 
@@ -70,6 +63,8 @@ int main()
     unsigned char   high_byte,low_byte;
     float           tempC,tempF;
     fd_set          rfds;
+    time_t          rawTime;
+    struct tm       *Atime;
 
 
     if( fork() )                       // child executes as background process
@@ -106,8 +101,11 @@ int main()
         memset(tbuf,0,8);
         memset(thedate,0,40);
 
-        sprintf(tbuf, "/bin/date +%%D,%%T > %s", tmpdateName);
-        system(tbuf);
+        time( &rawTime );
+        Atime = localtime( &rawTime );
+        sprintf(thedate,"%02d/%02d/%d,%02d:%02d:%02d",
+                        Atime->tm_mon+1,Atime->tm_mday,Atime->tm_year+1900,
+                        Atime->tm_hour, Atime->tm_min, Atime->tm_sec);
 
         gettimeofday(&tv1,&tz);
 
@@ -147,7 +145,7 @@ int main()
 
         close(fd);
 
-        if( read_thedate() == 1 )              // toss if the date is bad
+        if( check_thedate() == 1 )              // toss if the date is bad
         {
             ok_to_log = 1;
 
@@ -185,7 +183,7 @@ try_again:
         gettimeofday(&tv2,&tz);
 
         secsdiff  = tv2.tv_sec - tv1.tv_sec;
-        usecsdiff = (secsdiff * 1000000) + (tv2.tv_usec - tv1.tv_usec + 70000);   // 60100 for wally
+        usecsdiff = (secsdiff * 1000000) + (tv2.tv_usec - tv1.tv_usec + 60100);   // 60100 for wally
         tot       = 10000000 - usecsdiff;
 
         //printf("secs: %ld   usecs: %ld,   usecsdiff: %d    tot: %d\n", tv1.tv_sec, tv1.tv_usec, usecsdiff, tot);
