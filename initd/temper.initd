@@ -1,0 +1,88 @@
+#!/bin/sh
+#
+# start/stop temper Daemon
+#set -x
+
+### BEGIN INIT INFO
+# Provides:          temper
+# Required-Start:    $remote_fs $network $syslog
+# Required-Stop:     $remote_fs $network $syslog
+# Should-Start:      $named
+# Should-Stop:       $named
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: Start temper Daemon xx
+# Description:       Start temper Daemon
+### END INIT INFO
+
+BINTEMPER="/opt/Temper/temper"
+PIDFILE="/var/tmp/temper.pid"
+
+for arg in $*; do
+	case "$arg" in
+		-*=*) optarg=`echo "$arg" | sed 's/[-_a-zA-Z0-9]*=//'` ;;
+		   *) optarg= ;;
+	esac
+
+	if  ! test -f $PIDFILE ; then
+		STATUS="no"
+	else
+		PIDTEMPER=`cat $PIDFILE`
+		if ! kill -0 $PIDTEMPER 2>/dev/null; then
+			STATUS="no"
+		else
+			STATUS="yes"
+		fi
+	fi
+
+	case "$arg" in
+		start)
+			if [ "$STATUS" = "yes"  ] ; then
+				echo "temper is running... (PID=$PIDTEMPER)"
+				exit 1
+			fi
+			$BINTEMPER 2>>/var/tmp/temperErr.log
+			echo "Running temper (1) -> OK"
+			exit 0
+		;;
+		stop)
+			if  [ "$STATUS" = "no" ]; then
+				echo "temper is not running."
+				exit 0
+			fi
+			kill -9 $PIDTEMPER
+			rm -rf $PIDFILE > /dev/null
+			echo "temper stopped ($PIDTEMPER)"
+			exit 0
+			;;
+		force-reload|restart)
+			if  [ "$STATUS" = "yes" ]; then
+				if ! kill $PIDTEMPER  > /dev/null ; then
+					killall -9 temper
+				else
+					echo -n "Stopping temper "
+				fi
+			else
+				echo -n "temper is not running... "
+			fi
+			$BINTEMPER 2>>/var/tmp/temperErr.log
+			echo "Restarting -> OK"
+			exit 0
+			;;
+		status)
+                        if  [ "$STATUS" = "yes" ]; then
+				echo "temper  is running... (PID=$PIDTEMPER)"
+			else
+                                echo "temper is not running... "
+                        fi
+			exit 0
+			;;
+		*)
+			echo "Usage : temper [start|stop|restart|status|help]"
+			exit 1
+		;;
+	esac
+done
+echo "Usage : temper [start|stop|restart|status|help]"
+
+exit 0

@@ -27,9 +27,9 @@ float          PreviousReading;
 
 unsigned char  usbdat[8] = { 1,0x80,0x33,1,0,0,0,0 };    // magic byte sequence to read the temperature
 
-char          *HIDname       = "/dev/hidraw2";
-char          *TemperPidfile = "/tmp/temper.pid";
-char          *tmpdateName   = "/tmp/tmpdate";
+char          *HIDname       = "/dev/hidraw1";
+char          *TemperPidfile = "/var/tmp/temper.pid";
+char          *tmpdateName   = "/var/tmp/tmpdate";
 char          *logfile       = "/home/johnr/tempdata.log";
 
 //
@@ -87,7 +87,6 @@ int main()
     while(1)
     {
         fd = open(HIDname,O_RDWR);
-
         if( fd < 0 )
         {
             sprintf(tbuf, "ERROR opening %s\n\r", HIDname);
@@ -108,6 +107,7 @@ int main()
         memset(thedate,0,40);
 
         sprintf(tbuf, "/bin/date +%%D,%%T > %s", tmpdateName);
+        system(tbuf);
 
         gettimeofday(&tv1,&tz);
 
@@ -116,7 +116,6 @@ int main()
             firstflag     = 1;
             BaseTimeStamp = tv1.tv_sec;
         }
-        system(tbuf);
 
         write(fd,usbdat,8);
 
@@ -142,7 +141,7 @@ int main()
                  }
                  lenr += retv;
              }
-             else if( ++counter > 3)
+             else if( ++counter > 2)
                  break;
         }
 
@@ -170,7 +169,7 @@ int main()
                 if( PreviousReading < -100.0 )
                     ok_to_log = 0;
                 else
-                    sprintf(outdata,"%s,%.1f\n",thedate,PreviousReading);
+                    sprintf(outdata,"%ld,%s,%.1f,*\n",tv1.tv_sec-BaseTimeStamp,thedate,PreviousReading);
             }
 
             if( ok_to_log == 1 )
@@ -185,9 +184,8 @@ try_again:
 
         gettimeofday(&tv2,&tz);
 
-        // trial and error on the fudge of 60100.
-        // at least on 'wally' it works!
-        usecsdiff = abs(tv2.tv_usec - tv1.tv_usec) + 60100;
+        secsdiff  = tv2.tv_sec - tv1.tv_sec;
+        usecsdiff = (secsdiff * 1000000) + (tv2.tv_usec - tv1.tv_usec + 70000);   // 60100 for wally
         tot       = 10000000 - usecsdiff;
 
         //printf("secs: %ld   usecs: %ld,   usecsdiff: %d    tot: %d\n", tv1.tv_sec, tv1.tv_usec, usecsdiff, tot);

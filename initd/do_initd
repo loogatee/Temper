@@ -1,0 +1,13 @@
+#!/bin/bash
+set -x
+
+sudo cp temper.initd /etc/init.d/temper
+
+sudo ln -s /etc/init.d/temper /etc/rc0.d/K03temper
+sudo ln -s /etc/init.d/temper /etc/rc1.d/K03temper
+sudo ln -s /etc/init.d/temper /etc/rc2.d/S03temper
+sudo ln -s /etc/init.d/temper /etc/rc3.d/S03temper
+sudo ln -s /etc/init.d/temper /etc/rc4.d/S03temper
+sudo ln -s /etc/init.d/temper /etc/rc5.d/S03temper
+sudo ln -s /etc/init.d/temper /etc/rc6.d/K03temper
+
