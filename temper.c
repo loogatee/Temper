@@ -12,37 +12,84 @@
 #include <lauxlib.h>
 #include <lualib.h>
 
+//
+//   Seeing read failures on rpi's at the 10-second reading interval.
+//   Saw issue on BOTH boards (rpihymer, rpiQ)
+//   Same code OK on wally.
+//   Moved interval to 15 seconds on rpiQ and NO read failures!!
+//
+//        'read failure' is where the length returned = 0
+//
 
-#define HIDNAME         "/dev/hidraw1"
+
+#define HIDNAME         "/dev/hidrawX"
 #define TEMPERPIDFILE   "/var/tmp/temper.pid"
 #define LOGFILE         "/home/johnr/tempdata.log"
+#define LUTILS          "/opt/Temper/lutils.lua"
 
 
 typedef unsigned char   u8;
 
 typedef struct
 {
-    char   thedate[40];
-    float  PrevReading;
-    u8     usbdat[8];
-    char   HIDname[40];
-    int    firstflag;
+    char       thedate[40];
+    float      StoredReading;
+    u8         usbdat[8];
+    char       HIDname[40];
+    int        firstflag;
+    lua_State *LS1;
 } Globes;
 
 static Globes    Globals;
 
 
+
+static void Find_the_Hidraw_Device( void )
+{
+    const char *rp;
+    Globes *G = &Globals;
+
+    lua_getglobal(G->LS1,"find_hidraw");
+    lua_pcall    (G->LS1,0,1,0);
+    lua_pushnil  (G->LS1);
+    lua_next     (G->LS1,-2);
+
+    rp = lua_tostring(G->LS1,-1);
+    lua_pop(G->LS1, 1);
+
+    if( strlen(rp) > 0 )
+    {
+        strcpy(G->HIDname,rp);
+        printf("Found this HIDraw device: %s\n",G->HIDname);
+    }
+}
+
+
 static void Init_Globals( void )
 {
+    char   buf[80];
     Globes *G = &Globals;
 
     u8 Udat[8] = { 1,0x80,0x33,1,0,0,0,0 };    // magic byte sequence to read the temperature
 
     memcpy(G->usbdat,Udat,8);
-    strcpy(G->HIDname,(const char *)HIDNAME);
+    strcpy(G->HIDname,(const char *)HIDNAME);  // Default.  Can be overwritten by discovery
 
-    G->PrevReading = -1000.0;              // Big number is an initial condition
+    G->StoredReading = -1000.0;                // Big number is an initial condition
     G->firstflag   = 0;
+
+
+    G->LS1 = luaL_newstate();
+    luaL_openlibs(G->LS1);                     //   you really do need this
+
+    if( luaL_dofile(G->LS1, LUTILS) != 0 )     //   Can now extend the app with these lua functions
+    {
+        sprintf(buf,"luaL_dofile: ERROR opening %s\n", LUTILS);
+        write(2,buf,strlen(buf));
+        return;
+    }
+
+    Find_the_Hidraw_Device();
 }
 
 
@@ -53,7 +100,7 @@ static void Init_Globals( void )
 //
 //   1=good, 0=toss
 //
-static int check_thedate()
+static int check_thedate( void )
 {
     char *S;
 
@@ -121,17 +168,17 @@ static int TakeTemperatureReading(int fd, char *tbuf)
 
 int main( void )
 {
-    int             fd,lenr,temperature;
-    unsigned int    secsdiff,usecsdiff,tot,BaseTimeStamp;
-    char            tbuf[80];
-    struct timeval  tv1,tv2;
-    struct timezone tz;
-    float           tempF;
-    time_t          rawTime;
-    struct tm       *Atime;
-    Globes          *G = &Globals;
+    int               fd,lenr,temperature;
+    unsigned int      secsdiff,usecsdiff,tot,BaseTimeStamp;
+    char              tbuf[80];
+    struct timeval    tv1,tv2;
+    struct timezone   tz;
+    struct tm        *Atime;
+    float             tempF;
+    time_t            rawTime;
+    Globes           *G = &Globals;
 
-    if(fork()) {return 0;}                      // child executes as background process
+    if(fork()) {return 0;}                      // Parent returns. Child executes as background process
 
     Init_Globals();
 
@@ -143,13 +190,13 @@ int main( void )
 
     while(1)
     {
-        fd = open(G->HIDname,O_RDWR);
-        if( fd < 0 )
+        if( (fd=open(G->HIDname,O_RDWR)) < 0 )
         {
             sprintf(tbuf, "ERROR opening %s\n\r", G->HIDname);
             perror(tbuf);
             sleep(20);
-            break;
+            Find_the_Hidraw_Device();
+            continue;
         }
 
 
@@ -159,7 +206,7 @@ int main( void )
                             Atime->tm_mon+1,Atime->tm_mday,Atime->tm_year+1900,
                             Atime->tm_hour, Atime->tm_min, Atime->tm_sec);
 
-        gettimeofday(&tv1,&tz);                                // has micro-seconds
+        gettimeofday(&tv1,&tz);                                // because it has micro-seconds
 
         if( G->firstflag == 0 )
         {
@@ -171,14 +218,16 @@ int main( void )
         {
             close(fd);
 
-            if( lenr > 0 )
+            if( lenr > 0 )                                     // StoredReading used if lenr==0
             {
-                temperature    = ((u8)tbuf[2] << 8) + (u8)tbuf[3];
-                tempF          = (((float)temperature/100.0) * 1.8) + 32.0;
-                G->PrevReading = tempF;
+                temperature      = ((u8)tbuf[2] << 8) + (u8)tbuf[3];
+                tempF            = (((float)temperature/100.0) * 1.8) + 32.0;
+                G->StoredReading = tempF;
             }
 
-            sprintf(tbuf,"%ld,%s,%.1f\n",tv1.tv_sec-BaseTimeStamp,G->thedate,G->PrevReading);
+            sprintf(tbuf,"%ld,%s,%.1f\n",tv1.tv_sec-BaseTimeStamp,G->thedate,G->StoredReading);
+
+            // Queue up the data here.  4 every minute.   1hr=240 entries.  Memory is not an issue
 
             if( check_thedate() == 1 )
             {
