@@ -42,10 +42,24 @@ typedef struct
 
 static Globes    Globals;
 
+static void Fill_thedate( void ) 
+{
+    time_t      rawTime;
+    struct tm  *Atime;
+    Globes *G = &Globals;
+
+    time( &rawTime );
+    Atime = localtime( &rawTime );
+    sprintf(G->thedate,"%02d/%02d/%d,%02d:%02d:%02d",
+                        Atime->tm_mon+1,Atime->tm_mday,Atime->tm_year+1900,
+                        Atime->tm_hour, Atime->tm_min, Atime->tm_sec);
+}
+
 
 
 static void Find_the_Hidraw_Device( void )
 {
+    char  tbuf[88];
     const char *rp;
     Globes *G = &Globals;
 
@@ -60,7 +74,9 @@ static void Find_the_Hidraw_Device( void )
     if( strlen(rp) > 0 )
     {
         strcpy(G->HIDname,rp);
-        printf("Found this HIDraw device: %s\n",G->HIDname);
+        Fill_thedate();
+        sprintf(tbuf,"%s  Found this HIDraw device: %s\n",G->thedate,G->HIDname);
+        write(2,tbuf,strlen(tbuf));
     }
 }
 
@@ -173,9 +189,7 @@ int main( void )
     char              tbuf[80];
     struct timeval    tv1,tv2;
     struct timezone   tz;
-    struct tm        *Atime;
     float             tempF;
-    time_t            rawTime;
     Globes           *G = &Globals;
 
     if(fork()) {return 0;}                      // Parent returns. Child executes as background process
@@ -183,7 +197,7 @@ int main( void )
     Init_Globals();
 
     sprintf(tbuf,"%d",(unsigned int)getpid());
-    fd = open(TEMPERPIDFILE,O_WRONLY|O_CREAT,0644);
+    fd = open(TEMPERPIDFILE,O_WRONLY|O_CREAT|O_TRUNC,0644);
     write(fd,tbuf,strlen(tbuf));
     close(fd);
 
@@ -199,12 +213,7 @@ int main( void )
             continue;
         }
 
-
-        time( &rawTime );
-        Atime = localtime( &rawTime );
-        sprintf(G->thedate,"%02d/%02d/%d,%02d:%02d:%02d",
-                            Atime->tm_mon+1,Atime->tm_mday,Atime->tm_year+1900,
-                            Atime->tm_hour, Atime->tm_min, Atime->tm_sec);
+        Fill_thedate();
 
         gettimeofday(&tv1,&tz);                                // because it has micro-seconds
 
