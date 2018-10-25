@@ -11,3 +11,4 @@ sudo ln -s /etc/init.d/temper /etc/rc4.d/S03temper
 sudo ln -s /etc/init.d/temper /etc/rc5.d/S03temper
 sudo ln -s /etc/init.d/temper /etc/rc6.d/K03temper
 
+sudo cp 99-tempsensor.rules /etc/udev/rules.d
