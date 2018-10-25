@@ -28,14 +28,6 @@
 #include <lauxlib.h>
 #include <lualib.h>
 
-//
-//   Seeing read failures on rpi's at the 10-second reading interval.
-//   Saw issue on BOTH boards (rpihymer, rpiQ)
-//   Same code OK on wally.
-//   Moved interval to 15 seconds on rpiQ and NO read failures!!
-//
-//        'read failure' is where the length returned = 0
-//
 
 
 #define HIDNAME         "/dev/hidrawX"
@@ -57,6 +49,13 @@ typedef struct
 } Globes;
 
 static Globes    Globals;
+
+
+
+
+
+
+
 
 static void Fill_thedate( void ) 
 {
@@ -82,8 +81,8 @@ static void Find_the_Hidraw_Device( void )
     lua_getglobal(G->LS1,"find_hidraw");
     lua_pcall    (G->LS1,0,1,0);
     lua_pushnil  (G->LS1);
-    lua_next     (G->LS1,-2);
 
+    lua_next     (G->LS1,-2);
     rp = lua_tostring(G->LS1,-1);
     lua_pop(G->LS1, 1);
 
@@ -108,7 +107,7 @@ static void Init_Globals( void )
     strcpy(G->HIDname,(const char *)HIDNAME);  // Default.  Can be overwritten by discovery
 
     G->StoredReading = -1000.0;                // Big number is an initial condition
-    G->firstflag   = 0;
+    G->firstflag     = 0;
 
 
     G->LS1 = luaL_newstate();
@@ -134,11 +133,9 @@ static void Init_Globals( void )
 //
 static int check_thedate( void )
 {
-    char *S;
+    char *S = strrchr(Globals.thedate,'/');         // finds the last '/' in the string
 
-    S = strrchr(Globals.thedate,'/');         // finds the last '/' in the string
-
-    if( S == NULL || *(S+1) == '6' )
+    if( S == NULL || S[1] == '6' )
         return 0;
     else
         return 1;
@@ -156,19 +153,17 @@ static int TakeTemperatureReading(int fd, char *tbuf)
     struct timeval  tv;
     Globes         *G = &Globals;
 
+    memset(tbuf,0,8);          // only expect the 1st 8 bytes to change
     FD_ZERO(&rfds);
     FD_SET(fd,&rfds);
 
     tv.tv_sec  = 0;
-    tv.tv_usec = 100000;    // input into the select call.  100,000usec = 100msec = .1sec
+    tv.tv_usec = 100000;       // input into the select call.  100,000usec = 100msec = .1sec
     llen       = 0;
     counter    = 0;
 
-    memset(tbuf,0,8);
-
-
-
-    write(fd,G->usbdat,8);     // this Write of 8 bytes triggers the temperature reading
+                               // All init up to this point. The action begins here
+    write(fd,G->usbdat,8);     // This Write of 8 bytes triggers the temperature reading
 
     while(1)
     {
@@ -222,7 +217,7 @@ int main( void )
     {
         if( (fd=open(G->HIDname,O_RDWR)) < 0 )
         {
-            sprintf(tbuf, "ERROR opening %s\n\r", G->HIDname);
+            sprintf(tbuf, "ERROR opening %s  :", G->HIDname);
             perror(tbuf);
             sleep(20);
             Find_the_Hidraw_Device();
@@ -230,7 +225,6 @@ int main( void )
         }
 
         Fill_thedate();                                        // date & time, accurate to seconds
-
         gettimeofday(&tv1,&tz);                                // because it has micro-seconds
 
         if( G->firstflag == 0 )
@@ -286,46 +280,6 @@ int main( void )
         usleep(tot);
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/*
-    log directory needs to be accessible by monkey
-
-       separate directory for year
-       separate file for each day
-       accept request from socket, and send data back
-
-       New Program:
-       ??     - reads from socket 1:    reads latest date/temp.  Stores in memory
-       ??     - reads from socket 2:    writes date/temp from memory
-              - Web-page to keep getting the temp
-                    has button to get on request
-                    ajax transaction.  Send request, get response
-
-*/
-
-
-
-
-
-
-
 
 
 
