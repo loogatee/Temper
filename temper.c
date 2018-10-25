@@ -213,7 +213,7 @@ int main( void )
             continue;
         }
 
-        Fill_thedate();
+        Fill_thedate();                                        // date & time, accurate to seconds
 
         gettimeofday(&tv1,&tz);                                // because it has micro-seconds
 
@@ -236,10 +236,16 @@ int main( void )
 
             sprintf(tbuf,"%ld,%s,%.1f\n",tv1.tv_sec-BaseTimeStamp,G->thedate,G->StoredReading);
 
+            //
             // Queue up the data here.  4 every minute.   1hr=240 entries.  Memory is not an issue
+            // Temperature data could be valid, but date info could be bad
+            //
 
             if( check_thedate() == 1 )
             {
+                //
+                //   Different logfiles, based on date
+                //
                 if( (fd=open(LOGFILE,O_WRONLY|O_APPEND|O_CREAT,0666)) > 0 )
                 {
                     write(fd,tbuf,strlen(tbuf));
