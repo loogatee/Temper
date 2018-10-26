@@ -230,7 +230,6 @@ static int TakeTemperatureReading(int fd, char *tbuf)
     while(1)
     {
          retv = select(fd+1,&rfds,NULL,NULL,&tv);
-
          if( retv == -1 )
          {
              perror("select on hidraw device");
@@ -257,7 +256,7 @@ static int TakeTemperatureReading(int fd, char *tbuf)
 int main( int argc, char *argv[] )
 {
     int               fd,lenr,temperature;
-    unsigned int      secsdiff,usecsdiff,tot,BaseTimeStamp;
+    unsigned int      secsdiff,usecsdiff,BaseTimeStamp;
     char              tbuf[80];
     struct timeval    tv1,tv2;
     struct timezone   tz;
@@ -286,7 +285,7 @@ int main( int argc, char *argv[] )
             continue;
         }
 
-        if( Fill_thedate() )                                   // returnin non-zero means the date changed
+        if( Fill_thedate() )                                   // returning non-zero means the date changed
         { 
             Make_Dirs_and_Assign_LOGfile();
         }
@@ -318,13 +317,15 @@ int main( int argc, char *argv[] )
 
             if( check_thedate() == 1 )
             {
-                //
-                //   Different logfiles, based on date
-                //
                 if( (fd=open(G->LOGfile,O_WRONLY|O_APPEND|O_CREAT,0666)) > 0 )
                 {
                     write(fd,tbuf,strlen(tbuf));
                     close(fd);
+                }
+                else
+                {
+                    sprintf(tbuf, "ERROR Opening LOGfile (%s):", G->LOGfile);
+                    perror(tbuf)
                 }
             }
         }
@@ -338,11 +339,10 @@ int main( int argc, char *argv[] )
 
         secsdiff  = tv2.tv_sec - tv1.tv_sec;
         usecsdiff = (secsdiff * 1000000) + (tv2.tv_usec - tv1.tv_usec + 70000);   // 60100 for wally
-        tot       = 15000000 - usecsdiff;                                         // going for 15 seconds
 
-        //printf("secs: %ld   usecs: %ld,   usecsdiff: %d    tot: %d\n", tv1.tv_sec, tv1.tv_usec, usecsdiff, tot);
+        //printf("secs: %ld   usecs: %ld,   usecsdiff: %d\n", tv1.tv_sec, tv1.tv_usec, usecsdiff);
 
-        usleep(tot);
+        usleep( 15000000 - usecsdiff );
     }
 }
 
