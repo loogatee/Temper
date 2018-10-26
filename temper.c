@@ -79,10 +79,9 @@ static void Find_the_Hidraw_Device( void )
     Globes *G = &Globals;
 
     lua_getglobal(G->LS1,"find_hidraw");
-    lua_pcall    (G->LS1,0,1,0);
-    lua_pushnil  (G->LS1);
+    if( lua_isnil(L, -1) == 1 ) {return;}
 
-    lua_next     (G->LS1,-2);
+    lua_pcall(G->LS1,0,1,0);
     rp = lua_tostring(G->LS1,-1);
     lua_pop(G->LS1, 1);
 
@@ -112,13 +111,14 @@ static void Init_Globals( char *Pstr )
     S  = strrchr((const char *)Pstr,'/');      // Pstr is the entire path of the temper executable
     *S = 0;                                    // effectively lops off '/temper', leaving only the path
     sprintf(buf,"%s/%s",Pstr,LUTILS);          // new name is <path>/lutils.lua
-    //write(2,buf,strlen(buf));                // send to stdout if you want to look at the name
+    write(2,buf,strlen(buf));                  // send to stdout if you want to look at the name
+    write(2,"\n\r",2);                         // make the log look nice
     
 
-    G->LS1 = luaL_newstate();
-    luaL_openlibs(G->LS1);                     //   you really do need this
+    G->LS1 = luaL_newstate();                  // Set up the Lua environment
+    luaL_openlibs(G->LS1);                     //   doesn't seem to work without this
 
-    if( luaL_dofile(G->LS1, buf) != 0 )        //   Can now extend the app with these lua functions
+    if( luaL_dofile(G->LS1, buf) != 0 )        // Can now extend the app with these lua functions
     {
         sprintf(buf,"luaL_dofile: ERROR opening %s\n", LUTILS);
         write(2,buf,strlen(buf));
