@@ -35,6 +35,8 @@
 #define LOGFILE         "/home/johnr/tempdata.log"
 #define LUTILS          "lutils.lua"
 
+#define HIDNAMELEN      40
+
 
 typedef unsigned char   u8;
 
@@ -43,7 +45,7 @@ typedef struct
     char       thedate[40];
     float      StoredReading;
     u8         usbdat[8];
-    char       HIDname[40];
+    char       HIDname[HIDNAMELEN];
     int        firstflag;
     lua_State *LS1;
 } Globes;
@@ -87,7 +89,7 @@ static void Find_the_Hidraw_Device( void )
 
     if( strlen(rp) > 0 )
     {
-        strcpy(G->HIDname,rp);
+        strncpy(G->HIDname,rp,HIDNAMELEN);    G->HIDname[HIDNAMELEN-1]=0;
         Fill_thedate();
         sprintf(tbuf,"%s  Found this HIDraw device: %s\n",G->thedate,G->HIDname);
         write(2,tbuf,strlen(tbuf));
