@@ -32,10 +32,11 @@
 
 #define HIDNAME         "/dev/hidrawX"
 #define TEMPERPIDFILE   "/var/tmp/temper.pid"
-#define LOGFILE         "/home/johnr/tempdata.log"
+#define LOGFILE_BASE    "/usr/share/monkey/temper"
 #define LUTILS          "lutils.lua"
 
 #define HIDNAMELEN      40
+#define LOGNAMELEN      80
 
 
 typedef unsigned char   u8;
@@ -46,7 +47,9 @@ typedef struct
     float      StoredReading;
     u8         usbdat[8];
     char       HIDname[HIDNAMELEN];
+    char       LOGfile[LOGNAMELEN];
     int        firstflag;
+    int        Kyear,Kmonth,Kday;
     lua_State *LS1;
 } Globes;
 
@@ -54,15 +57,48 @@ static Globes    Globals;
 
 
 
-
-
-
-
-
-static void Fill_thedate( void ) 
+static void Make_Dirs_and_Assign_LOGfile( void )
 {
-    time_t      rawTime;
-    struct tm  *Atime;
+    char         buf1[120];
+    char         buf2[120];
+    struct stat  sb;
+    Globes *G = &Globals;
+
+    G->LOGfile[0] = 0;
+
+    if (stat(LOGFILE_BASE, &sb) || !S_ISDIR(sb.st_mode))           // IF directory does not exist
+    {
+        if( mkdir(LOGFILE_BASE,0755) < 0)                          // THEN make it
+        {
+            sprintf(buf1,"xERROR on mkdir (%s)", LOGFILE_BASE);    //    show error and return if can't make the directory
+            perror(buf1);                                          //    Error message shown on stdout (see /etc/init.d/temper)
+            return;                                                //    LOGfile name is NULL
+        }
+    }
+
+    sprintf(buf1,"%s/y%d",LOGFILE_BASE,G->Kyear);                  // name for the 'year' directory.  Example:  'y2018'
+    
+    if (stat(buf1, &sb) || !S_ISDIR(sb.st_mode))                   // IF directory does not exist
+    {
+        if( mkdir(buf1,0755) < 0)                                  // THEN make it, and also check/handle errors
+        {
+            sprintf(buf2,"yERROR on mkdir (%s)", buf1);
+            perror(buf2);
+            return;
+        }
+    }
+
+    sprintf(G->LOGfile,"%s/y%d/d%02d_%02d.txt",LOGFILE_BASE,G->Kyear,G->Kmonth,G->Kday);    // new LOGfile full path-name is this
+}
+
+
+
+
+static int Fill_thedate( void ) 
+{
+    int          has_changed;
+    time_t       rawTime;
+    struct tm   *Atime;
     Globes *G = &Globals;
 
     time( &rawTime );
@@ -70,6 +106,25 @@ static void Fill_thedate( void )
     sprintf(G->thedate,"%02d/%02d/%d,%02d:%02d:%02d",
                         Atime->tm_mon+1,Atime->tm_mday,Atime->tm_year+1900,
                         Atime->tm_hour, Atime->tm_min, Atime->tm_sec);
+
+    if( G->firstflag == 0 )
+    {
+        G->Kyear  = Atime->tm_year+1900;
+        G->Kmonth = Atime->tm_mon+1;
+        G->Kday   = Atime->tm_mday;
+
+        has_changed = 1;
+    }
+    else
+    {
+        has_changed = 0;
+
+        if( G->Kyear  != Atime->tm_year+1900 )   {G->Kyear  = Atime->tm_year+1900; has_changed = 1;}
+        if( G->Kmonth != Atime->tm_mon+1     )   {G->Kmonth = Atime->tm_mon+1;     has_changed = 1;}
+        if( G->Kday   != Atime->tm_mday      )   {G->Kday   = Atime->tm_mday;      has_changed = 1;}
+    }
+
+    return has_changed;
 }
 
 
@@ -81,7 +136,7 @@ static void Find_the_Hidraw_Device( void )
     Globes *G = &Globals;
 
     lua_getglobal(G->LS1,"find_hidraw");
-    if( lua_isnil(L, -1) == 1 ) {return;}
+    if( lua_isnil(G->LS1, -1) == 1 ) {return;}
 
     lua_pcall(G->LS1,0,1,0);
     rp = lua_tostring(G->LS1,-1);
@@ -231,7 +286,10 @@ int main( int argc, char *argv[] )
             continue;
         }
 
-        Fill_thedate();                                        // date & time, accurate to seconds
+        if( Fill_thedate() )                                   // returnin non-zero means the date changed
+        { 
+            Make_Dirs_and_Assign_LOGfile();
+        }
         gettimeofday(&tv1,&tz);                                // because it has micro-seconds
 
         if( G->firstflag == 0 )
@@ -263,7 +321,7 @@ int main( int argc, char *argv[] )
                 //
                 //   Different logfiles, based on date
                 //
-                if( (fd=open(LOGFILE,O_WRONLY|O_APPEND|O_CREAT,0666)) > 0 )
+                if( (fd=open(G->LOGfile,O_WRONLY|O_APPEND|O_CREAT,0666)) > 0 )
                 {
                     write(fd,tbuf,strlen(tbuf));
                     close(fd);
