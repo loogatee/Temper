@@ -33,7 +33,7 @@
 #define HIDNAME         "/dev/hidrawX"
 #define TEMPERPIDFILE   "/var/tmp/temper.pid"
 #define LOGFILE         "/home/johnr/tempdata.log"
-#define LUTILS          "/opt/Temper/lutils.lua"
+#define LUTILS          "lutils.lua"
 
 
 typedef unsigned char   u8;
@@ -74,7 +74,7 @@ static void Fill_thedate( void )
 
 static void Find_the_Hidraw_Device( void )
 {
-    char  tbuf[88];
+    char  tbuf[120];
     const char *rp;
     Globes *G = &Globals;
 
@@ -96,9 +96,9 @@ static void Find_the_Hidraw_Device( void )
 }
 
 
-static void Init_Globals( void )
+static void Init_Globals( char *Pstr )
 {
-    char   buf[80];
+    char         buf[80],*S;
     Globes *G = &Globals;
 
     u8 Udat[8] = { 1,0x80,0x33,1,0,0,0,0 };    // magic byte sequence to read the temperature
@@ -109,11 +109,16 @@ static void Init_Globals( void )
     G->StoredReading = -1000.0;                // Big number is an initial condition
     G->firstflag     = 0;
 
+    S  = strrchr((const char *)Pstr,'/');      // Pstr is the entire path of the temper executable
+    *S = 0;                                    // effectively lops off '/temper', leaving only the path
+    sprintf(buf,"%s/%s",Pstr,LUTILS);          // new name is <path>/lutils.lua
+    //write(2,buf,strlen(buf));                // send to stdout if you want to look at the name
+    
 
     G->LS1 = luaL_newstate();
     luaL_openlibs(G->LS1);                     //   you really do need this
 
-    if( luaL_dofile(G->LS1, LUTILS) != 0 )     //   Can now extend the app with these lua functions
+    if( luaL_dofile(G->LS1, buf) != 0 )        //   Can now extend the app with these lua functions
     {
         sprintf(buf,"luaL_dofile: ERROR opening %s\n", LUTILS);
         write(2,buf,strlen(buf));
@@ -192,8 +197,7 @@ static int TakeTemperatureReading(int fd, char *tbuf)
 }
 
 
-
-int main( void )
+int main( int argc, char *argv[] )
 {
     int               fd,lenr,temperature;
     unsigned int      secsdiff,usecsdiff,tot,BaseTimeStamp;
@@ -203,9 +207,10 @@ int main( void )
     float             tempF;
     Globes           *G = &Globals;
 
+
     if(fork()) {return 0;}                      // Parent returns. Child executes as background process
 
-    Init_Globals();
+    Init_Globals(argv[0]);
 
     sprintf(tbuf,"%d",(unsigned int)getpid());
     fd = open(TEMPERPIDFILE,O_WRONLY|O_CREAT|O_TRUNC,0644);
