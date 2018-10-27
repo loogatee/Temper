@@ -147,7 +147,7 @@ static void Find_the_Hidraw_Device( void )
         strncpy(G->HIDname,rp,HIDNAMELEN);    G->HIDname[HIDNAMELEN-1]=0;
         Fill_thedate();
         sprintf(tbuf,"%s  Found this HIDraw device: %s\n",G->thedate,G->HIDname);
-        write(2,tbuf,strlen(tbuf));
+        write(STDERR_FILENO,tbuf,strlen(tbuf));
     }
 }
 
@@ -168,8 +168,8 @@ static void Init_Globals( char *Pstr )
     S  = strrchr((const char *)Pstr,'/');      // Pstr is the entire path of the temper executable
     *S = 0;                                    // effectively lops off '/temper', leaving only the path
     sprintf(buf,"%s/%s",Pstr,LUTILS);          // new name is <path>/lutils.lua
-    write(2,buf,strlen(buf));                  // send to stdout if you want to look at the name
-    write(2,"\n\r",2);                         // make the log look nice
+    write(STDERR_FILENO,buf,strlen(buf));                  // send to stderr if you want to look at the name
+    write(STDERR_FILENO,"\n\r",2);                         // make the log look nice
     
 
     G->LS1 = luaL_newstate();                  // Set up the Lua environment
@@ -178,7 +178,7 @@ static void Init_Globals( char *Pstr )
     if( luaL_dofile(G->LS1, buf) != 0 )        // Can now extend the app with these lua functions
     {
         sprintf(buf,"luaL_dofile: ERROR opening %s\n", LUTILS);
-        write(2,buf,strlen(buf));
+        write(STDERR_FILENO,buf,strlen(buf));
         return;
     }
 
@@ -257,7 +257,7 @@ int main( int argc, char *argv[] )
 {
     int               fd,lenr,temperature;
     unsigned int      secsdiff,usecsdiff,BaseTimeStamp;
-    char              tbuf[80];
+    char              tbuf[180];
     struct timeval    tv1,tv2;
     struct timezone   tz;
     float             tempF;
@@ -325,7 +325,7 @@ int main( int argc, char *argv[] )
                 else
                 {
                     sprintf(tbuf, "ERROR Opening LOGfile (%s):", G->LOGfile);
-                    perror(tbuf)
+                    perror(tbuf);
                 }
             }
         }
