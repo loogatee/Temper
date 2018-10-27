@@ -45,15 +45,51 @@ typedef struct
 {
     char       thedate[40];
     float      StoredReading;
-    u8         usbdat[8];
     char       HIDname[HIDNAMELEN];
     char       LOGfile[LOGNAMELEN];
-    int        firstflag;
-    int        Kyear,Kmonth,Kday;
+    int        Kflag,Kyear,Kmonth,Kday;
     lua_State *LS1;
 } Globes;
 
 static Globes    Globals;
+
+
+static void Find_the_Hidraw_Device( void );
+
+
+/* ------------------------------------ */
+
+
+
+static void Init_Globals( char *Pstr )
+{
+    char         buf[80],*S;
+    Globes *G = &Globals;
+
+    G->StoredReading = -1000.0;                // Big number is an initial condition
+    G->Kflag         = 0;
+
+    strcpy(G->HIDname,(const char *)HIDNAME);  // Default.  Can be overwritten by discovery
+
+    S  = strrchr((const char *)Pstr,'/');      // Pstr is the entire path of the temper executable
+    *S = 0;                                    // effectively lops off '/temper', leaving only the path
+    sprintf(buf,"%s/%s",Pstr,LUTILS);          // new name is <path>/lutils.lua
+    write(STDERR_FILENO,buf,strlen(buf));      // send to stderr if you want to look at the name
+    write(STDERR_FILENO,"\n\r",2);             // make the log look nice
+    
+
+    G->LS1 = luaL_newstate();                  // Set up the Lua environment
+    luaL_openlibs(G->LS1);                     //   doesn't seem to work without this
+
+    if( luaL_dofile(G->LS1, buf) != 0 )        // Can now extend the app with these lua functions
+    {
+        sprintf(buf,"luaL_dofile: ERROR opening %s\n", LUTILS);
+        write(STDERR_FILENO,buf,strlen(buf));
+        return;
+    }
+
+    Find_the_Hidraw_Device();
+}
 
 
 
@@ -92,9 +128,23 @@ static void Make_Dirs_and_Assign_LOGfile( void )
 }
 
 
+static time_t Get_Midnite_Seconds( void )
+{
+    time_t      rawTime;
+    struct tm  *Atime;
+
+    time( &rawTime );
+    Atime = localtime( &rawTime );
+
+    Atime->tm_sec  = 0;
+    Atime->tm_min  = 0;
+    Atime->tm_hour = 0;
+
+    return mktime(Atime);
+}
 
 
-static int Fill_thedate( void ) 
+static int Fill_thedate( time_t *nowTime ) 
 {
     int          has_changed;
     time_t       rawTime;
@@ -102,13 +152,16 @@ static int Fill_thedate( void )
     Globes *G = &Globals;
 
     time( &rawTime );
-    Atime = localtime( &rawTime );
+    *nowTime = rawTime;
+    Atime    = localtime( &rawTime );
+
     sprintf(G->thedate,"%02d/%02d/%d,%02d:%02d:%02d",
                         Atime->tm_mon+1,Atime->tm_mday,Atime->tm_year+1900,
                         Atime->tm_hour, Atime->tm_min, Atime->tm_sec);
 
-    if( G->firstflag == 0 )
+    if( G->Kflag == 0 )
     {
+        G->Kflag  = 1;
         G->Kyear  = Atime->tm_year+1900;
         G->Kmonth = Atime->tm_mon+1;
         G->Kday   = Atime->tm_mday;
@@ -131,59 +184,23 @@ static int Fill_thedate( void )
 
 static void Find_the_Hidraw_Device( void )
 {
-    char  tbuf[120];
     const char *rp;
     Globes *G = &Globals;
 
-    lua_getglobal(G->LS1,"find_hidraw");
-    if( lua_isnil(G->LS1, -1) == 1 ) {return;}
+    lua_getglobal(G->LS1,"find_hidraw");           // function to call (see lutils.lua)
+    if( lua_isnil(G->LS1, -1) == 1 ) {return;}     // means 'find_hidraw' was not found, should not happen
 
-    lua_pcall(G->LS1,0,1,0);
-    rp = lua_tostring(G->LS1,-1);
-    lua_pop(G->LS1, 1);
+    lua_pcall(G->LS1,0,1,0);                       // calls 'find_hidraw'.  The 1 says: one return value
+    rp = lua_tostring(G->LS1,-1);                  // the return value is a string: rp points to it
+    lua_pop(G->LS1, 1);                            // cleans up the stack
 
-    if( strlen(rp) > 0 )
+    if( strlen(rp) > 0 )                           // returned string will be NULL if device not found
     {
-        strncpy(G->HIDname,rp,HIDNAMELEN);    G->HIDname[HIDNAMELEN-1]=0;
-        Fill_thedate();
-        sprintf(tbuf,"%s  Found this HIDraw device: %s\n",G->thedate,G->HIDname);
-        write(STDERR_FILENO,tbuf,strlen(tbuf));
+        strncpy(G->HIDname,rp,HIDNAMELEN);         // copy at most HIDNAMELEN
+        G->HIDname[HIDNAMELEN-1] = 0;              // guarantes string termination
     }
 }
 
-
-static void Init_Globals( char *Pstr )
-{
-    char         buf[80],*S;
-    Globes *G = &Globals;
-
-    u8 Udat[8] = { 1,0x80,0x33,1,0,0,0,0 };    // magic byte sequence to read the temperature
-
-    memcpy(G->usbdat,Udat,8);
-    strcpy(G->HIDname,(const char *)HIDNAME);  // Default.  Can be overwritten by discovery
-
-    G->StoredReading = -1000.0;                // Big number is an initial condition
-    G->firstflag     = 0;
-
-    S  = strrchr((const char *)Pstr,'/');      // Pstr is the entire path of the temper executable
-    *S = 0;                                    // effectively lops off '/temper', leaving only the path
-    sprintf(buf,"%s/%s",Pstr,LUTILS);          // new name is <path>/lutils.lua
-    write(STDERR_FILENO,buf,strlen(buf));                  // send to stderr if you want to look at the name
-    write(STDERR_FILENO,"\n\r",2);                         // make the log look nice
-    
-
-    G->LS1 = luaL_newstate();                  // Set up the Lua environment
-    luaL_openlibs(G->LS1);                     //   doesn't seem to work without this
-
-    if( luaL_dofile(G->LS1, buf) != 0 )        // Can now extend the app with these lua functions
-    {
-        sprintf(buf,"luaL_dofile: ERROR opening %s\n", LUTILS);
-        write(STDERR_FILENO,buf,strlen(buf));
-        return;
-    }
-
-    Find_the_Hidraw_Device();
-}
 
 
 //
@@ -203,6 +220,8 @@ static int check_thedate( void )
         return 1;
 }
 
+
+
 //   returns:
 //        -1  on error from select() or read()
 //         0  if the device never put any data on the wire
@@ -213,7 +232,8 @@ static int TakeTemperatureReading(int fd, char *tbuf)
     int             retv,llen,counter;
     fd_set          rfds;
     struct timeval  tv;
-    Globes         *G = &Globals;
+    static u8       ReadTemp_ByteSequence[8] = { 1,0x80,0x33,1,0,0,0,0 };    // magic byte sequence to read the temperature
+
 
     memset(tbuf,0,8);          // only expect the 1st 8 bytes to change
     FD_ZERO(&rfds);
@@ -224,8 +244,8 @@ static int TakeTemperatureReading(int fd, char *tbuf)
     llen       = 0;
     counter    = 0;
 
-                               // All init up to this point. The action begins here
-    write(fd,G->usbdat,8);     // This Write of 8 bytes triggers the temperature reading
+                                           // All init up to this point. The action begins here
+    write(fd,ReadTemp_ByteSequence,8);     // This Write of 8 bytes triggers the temperature reading
 
     while(1)
     {
@@ -253,10 +273,12 @@ static int TakeTemperatureReading(int fd, char *tbuf)
 }
 
 
+
 int main( int argc, char *argv[] )
 {
     int               fd,lenr,temperature;
-    unsigned int      secsdiff,usecsdiff,BaseTimeStamp;
+    unsigned int      secsdiff,usecsdiff;
+    time_t            midniteSecs,nowSecs;
     char              tbuf[180];
     struct timeval    tv1,tv2;
     struct timezone   tz;
@@ -280,22 +302,17 @@ int main( int argc, char *argv[] )
         {
             sprintf(tbuf, "ERROR opening %s  :", G->HIDname);
             perror(tbuf);
-            sleep(20);
+            sleep(15);
             Find_the_Hidraw_Device();
             continue;
         }
 
-        if( Fill_thedate() )                                   // returning non-zero means the date changed
+        if( Fill_thedate( &nowSecs ) )                         // returning non-zero means the date changed
         { 
             Make_Dirs_and_Assign_LOGfile();
+            midniteSecs = Get_Midnite_Seconds();
         }
         gettimeofday(&tv1,&tz);                                // because it has micro-seconds
-
-        if( G->firstflag == 0 )
-        {
-            G->firstflag  = 1;
-            BaseTimeStamp = tv1.tv_sec;                        // BaseTimeStamp is the keeper here
-        }
 
         if( (lenr=TakeTemperatureReading(fd,tbuf)) >= 0 )      // return data is in tbuf
         {
@@ -308,7 +325,7 @@ int main( int argc, char *argv[] )
                 G->StoredReading = tempF;
             }
 
-            sprintf(tbuf,"%ld,%s,%.1f\n",tv1.tv_sec-BaseTimeStamp,G->thedate,G->StoredReading);
+            sprintf(tbuf,"%ld,%s,%.1f\n",(nowSecs-midniteSecs),G->thedate,G->StoredReading);
 
             //
             // Queue up the data here.  4 every minute.   1hr=240 entries.  Memory is not an issue
@@ -332,7 +349,8 @@ int main( int argc, char *argv[] )
         else
         {
             close(fd);         // error on select() or read()
-            sleep(20);
+            sleep(15);
+            continue;
         }
 
         gettimeofday(&tv2,&tz);
