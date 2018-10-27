@@ -229,10 +229,10 @@ static int check_thedate( void )
 //
 static int TakeTemperatureReading(int fd, char *tbuf)
 {
-    int             retv,llen,counter;
+    int             retS,retR,llen,counter;
     fd_set          rfds;
     struct timeval  tv;
-    static u8       ReadTemp_ByteSequence[8] = { 1,0x80,0x33,1,0,0,0,0 };    // magic byte sequence to read the temperature
+    static const u8 ReadTemp_ByteSequence[8] = { 1,0x80,0x33,1,0,0,0,0 };    // magic byte sequence to read the temperature
 
 
     memset(tbuf,0,8);          // only expect the 1st 8 bytes to change
@@ -247,26 +247,24 @@ static int TakeTemperatureReading(int fd, char *tbuf)
                                            // All init up to this point. The action begins here
     write(fd,ReadTemp_ByteSequence,8);     // This Write of 8 bytes triggers the temperature reading
 
-    while(1)
+    while( counter < 2 && llen < 8 )
     {
-         retv = select(fd+1,&rfds,NULL,NULL,&tv);
-         if( retv == -1 )
+         retS = select(fd+1,&rfds,NULL,NULL,&tv);
+         if( retS == -1 )
          {
              perror("select on hidraw device");
              return -1;
          }
-         else if( retv )
+         else if( retS )
          {
-             if( (retv = read(fd,&tbuf[llen],8)) < 0 )
+             if( (retR = read(fd,&tbuf[llen],8)) < 0 )
              {
                  perror("read from hidraw device");
                  return -1;
              }
-             llen += retv;
-             if( llen > 16 ) {break;}     // failsafe
+             llen += retR;
          }
-         else if( ++counter > 2)
-             break;
+         else ++counter;
     }
 
     return llen;
@@ -314,7 +312,7 @@ int main( int argc, char *argv[] )
         }
         gettimeofday(&tv1,&tz);                                // because it has micro-seconds
 
-        if( (lenr=TakeTemperatureReading(fd,tbuf)) >= 0 )      // return data is in tbuf
+        if( (lenr=TakeTemperatureReading(fd,tbuf)) >= 0 )      // return data, raw bytestream is in tbuf
         {
             close(fd);
 
