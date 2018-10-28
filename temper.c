@@ -269,7 +269,6 @@ int main( int argc, char *argv[] )
     char              tbuf[180];
     struct timeval    tv1,tv2;
     struct timezone   tz;
-    float             tempF;
     Globes           *G = &Globals;
 
 
@@ -277,21 +276,19 @@ int main( int argc, char *argv[] )
 
     Init_Globals(argv[0]);
 
-    sprintf(tbuf,"%d",(unsigned int)getpid());
-    fd = open(TEMPERPIDFILE,O_WRONLY|O_CREAT|O_TRUNC,0644);
-    write(fd,tbuf,strlen(tbuf));
-    close(fd);
+    sprintf(tbuf,"%d",(unsigned int)getpid());                 // hey, you pid!
+    fd = open(TEMPERPIDFILE,O_WRONLY|O_CREAT|O_TRUNC,0644);    // create if not there. Trunc if there
+    write(fd,tbuf,strlen(tbuf));                               // note confidence: no error checking!
+    close(fd);                                                 // done. Close.  The pid was written!
 
 
     while(1)
     {
         if( (fd=open(G->HIDname,O_RDWR)) < 0 )
         {
-            sprintf(tbuf, "ERROR opening %s  :", G->HIDname);
+            sprintf(tbuf, "ERROR open HIDname (%s):", G->HIDname);
             perror(tbuf);
-            sleep(15);
-            Find_the_Hidraw_Device();
-            continue;
+            Find_the_Hidraw_Device();                          // keep testing every 15 seconds
         }
 
         if( Fill_thedate( &nowSecs ) )                         // returning non-zero means the date changed
@@ -301,15 +298,14 @@ int main( int argc, char *argv[] )
         }
         gettimeofday(&tv1,&tz);                                // because it has micro-seconds
 
-        if( (lenr=TakeTemperatureReading(fd,tbuf)) >= 0 )      // return data, raw bytestream is in tbuf
+        if( (fd>0) && ((lenr=TakeTemperatureReading(fd,tbuf)) >= 0) )   // return data of 8 bytes is in tbuf
         {
             close(fd);
 
             if( lenr > 0 )                                     // StoredReading used if lenr==0
             {
                 temperature      = ((u8)tbuf[2] << 8) + (u8)tbuf[3];
-                tempF            = (((float)temperature/100.0) * 1.8) + 32.0;
-                G->StoredReading = tempF;
+                G->StoredReading = (((float)temperature/100.0) * 1.8) + 32.0;
             }
 
             sprintf(tbuf,"%ld,%s,%.1f\n",(nowSecs-midniteSecs),G->thedate,G->StoredReading);
@@ -335,9 +331,7 @@ int main( int argc, char *argv[] )
         }
         else
         {
-            close(fd);         // error on select() or read()
-            sleep(15);
-            continue;
+            if( fd>0 ) close(fd);     // close down if possible
         }
 
         gettimeofday(&tv2,&tz);
