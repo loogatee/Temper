@@ -109,7 +109,22 @@ static int check_and_make( char *istr )
     return 0;                                              // return good
 }
 
-
+//
+//   With BASE = '/usr/share/monkey/temper':
+//   And Date  = '10/28/2018'
+//
+//      YearDirName = /usr/share/monkey/temper/y2018
+//      LOGfilename = /usr/share/monkey/temper/y2018/d10_28.txt
+//
+//      These 2 directories would get created if needed:
+//          1. /usr/share/monkey/temper
+//          2. /usr/share/monkey/temper/y2018
+//
+//   Once BASE is created, the Year Directory should only need
+//   to get created after that, which will happen yearly.
+//
+//        ****  The LOGfilename will change everyday  ****
+//
 static void Make_Dirs_and_Assign_LOGfilename( void )
 {
     char         YearDirName[120];
@@ -123,7 +138,7 @@ static void Make_Dirs_and_Assign_LOGfilename( void )
 
     if( check_and_make(YearDirName) ) {return;}                    // non-zero return: Error with mkdir
     
-    sprintf(G->LOGfilename,"%s/y%d/d%02d_%02d.txt",LOGFILE_BASE,G->Kyear,G->Kmonth,G->Kday);    // full path-name is this
+    sprintf(G->LOGfilename,"%s/d%02d_%02d.txt",YearDirName,G->Kmonth,G->Kday);    // full path-name is this
 }
 
 
