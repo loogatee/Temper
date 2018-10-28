@@ -354,8 +354,6 @@ int main( int argc, char *argv[] )
         secsdiff  = tv2.tv_sec - tv1.tv_sec;
         usecsdiff = (secsdiff * 1000000) + (tv2.tv_usec - tv1.tv_usec + 70000);   // 60100 for wally
 
-        //printf("secs: %ld   usecs: %ld,   usecsdiff: %d\n", tv1.tv_sec, tv1.tv_usec, usecsdiff);
-
         usleep( 15000000 - usecsdiff );
     }
 }
