@@ -181,13 +181,14 @@ static void Find_the_Hidraw_Device( void )
 
     lua_pcall(G->LS1,0,1,0);                       // calls 'find_hidraw'.  The 1 says: one return value
     rp = lua_tostring(G->LS1,-1);                  // the return value is a string: rp points to it
-    lua_pop(G->LS1, 1);                            // cleans up the stack
 
     if( strlen(rp) > 0 )                           // returned string will be NULL if device not found
     {
         strncpy(G->HIDname,rp,HIDNAMELEN);         // copy at most HIDNAMELEN
         G->HIDname[HIDNAMELEN-1] = 0;              // guarantes string termination
     }
+
+    lua_pop(G->LS1, 1);                            // cleans up the stack
 }
 
 
