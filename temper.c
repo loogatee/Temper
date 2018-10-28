@@ -46,7 +46,7 @@ typedef struct
     char       thedate[40];
     float      StoredReading;
     char       HIDname[HIDNAMELEN];
-    char       LOGfile[LOGNAMELEN];
+    char       LOGfilename[LOGNAMELEN];
     int        Kyear,Kmonth,Kday;
     lua_State *LS1;
 } Globes;
@@ -92,39 +92,38 @@ static void Init_Globals( char *Pstr )
 }
 
 
-
-static void Make_Dirs_and_Assign_LOGfile( void )
+static int check_and_make( char *istr )
 {
-    char         buf1[120];
-    char         buf2[120];
-    struct stat  sb;
+    char          bufx[120];
+    struct stat   sb;
+
+    if (stat(istr, &sb) || !S_ISDIR(sb.st_mode))           // IF directory does not exist
+    {
+        if( mkdir(istr,0755) < 0)                          // THEN make it
+        {
+            sprintf(bufx,"ERROR mkdir (%s)", istr);        //    show error and return if can't make the directory
+            perror(bufx);                                  //    Error message shown on stdout (see /etc/init.d/temper)
+            return 1;                                      //    1 means return error
+        }
+    }
+    return 0;                                              // return good
+}
+
+
+static void Make_Dirs_and_Assign_LOGfilename( void )
+{
+    char         YearDirName[120];
     Globes *G = &Globals;
 
-    G->LOGfile[0] = 0;
+    G->LOGfilename[0] = 0;
 
-    if (stat(LOGFILE_BASE, &sb) || !S_ISDIR(sb.st_mode))           // IF directory does not exist
-    {
-        if( mkdir(LOGFILE_BASE,0755) < 0)                          // THEN make it
-        {
-            sprintf(buf1,"xERROR on mkdir (%s)", LOGFILE_BASE);    //    show error and return if can't make the directory
-            perror(buf1);                                          //    Error message shown on stdout (see /etc/init.d/temper)
-            return;                                                //    LOGfile name is NULL
-        }
-    }
+    if( check_and_make(LOGFILE_BASE) ) {return;}                   // non-zero return: Error with mkdir
 
-    sprintf(buf1,"%s/y%d",LOGFILE_BASE,G->Kyear);                  // name for the 'year' directory.  Example:  'y2018'
+    sprintf(YearDirName,"%s/y%d",LOGFILE_BASE,G->Kyear);           // name for the 'year' directory.  Example:  'y2018'
+
+    if( check_and_make(YearDirName) ) {return;}                    // non-zero return: Error with mkdir
     
-    if (stat(buf1, &sb) || !S_ISDIR(sb.st_mode))                   // IF directory does not exist
-    {
-        if( mkdir(buf1,0755) < 0)                                  // THEN make it, and also check/handle errors
-        {
-            sprintf(buf2,"yERROR on mkdir (%s)", buf1);
-            perror(buf2);
-            return;
-        }
-    }
-
-    sprintf(G->LOGfile,"%s/y%d/d%02d_%02d.txt",LOGFILE_BASE,G->Kyear,G->Kmonth,G->Kday);    // new LOGfile full path-name is this
+    sprintf(G->LOGfilename,"%s/y%d/d%02d_%02d.txt",LOGFILE_BASE,G->Kyear,G->Kmonth,G->Kday);    // full path-name is this
 }
 
 
@@ -294,7 +293,7 @@ int main( int argc, char *argv[] )
 
         if( Fill_thedate( &nowSecs ) )                         // returning non-zero means the date changed
         { 
-            Make_Dirs_and_Assign_LOGfile();
+            Make_Dirs_and_Assign_LOGfilename();
             midniteSecs = Get_Midnite_Seconds();
         }
         gettimeofday(&tv1,&tz);                                // because it has micro-seconds
@@ -318,14 +317,14 @@ int main( int argc, char *argv[] )
 
             if( check_thedate() == 1 )
             {
-                if( (fd=open(G->LOGfile,O_WRONLY|O_APPEND|O_CREAT,0666)) > 0 )
+                if( (fd=open(G->LOGfilename,O_WRONLY|O_APPEND|O_CREAT,0666)) > 0 )
                 {
                     write(fd,tbuf,strlen(tbuf));
                     close(fd);
                 }
                 else
                 {
-                    sprintf(tbuf, "ERROR Opening LOGfile (%s):", G->LOGfile);
+                    sprintf(tbuf, "ERROR Opening LOGfilename (%s)", G->LOGfilename);
                     perror(tbuf);
                 }
             }
