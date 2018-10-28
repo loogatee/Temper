@@ -47,7 +47,7 @@ typedef struct
     float      StoredReading;
     char       HIDname[HIDNAMELEN];
     char       LOGfile[LOGNAMELEN];
-    int        Kflag,Kyear,Kmonth,Kday;
+    int        Kyear,Kmonth,Kday;
     lua_State *LS1;
 } Globes;
 
@@ -67,7 +67,7 @@ static void Init_Globals( char *Pstr )
     Globes *G = &Globals;
 
     G->StoredReading = -1000.0;                // Big number is an initial condition
-    G->Kflag         = 0;
+    G->Kday          = 99;
 
     strcpy(G->HIDname,(const char *)HIDNAME);  // Default.  Can be overwritten by discovery
 
@@ -146,10 +146,9 @@ static time_t Get_Midnite_Seconds( void )
 
 static int Fill_thedate( time_t *nowTime ) 
 {
-    int          has_changed;
-    time_t       rawTime;
-    struct tm   *Atime;
-    Globes *G = &Globals;
+    time_t      rawTime;
+    struct tm  *Atime;
+    Globes     *G = &Globals;
 
     time( &rawTime );
     *nowTime = rawTime;
@@ -159,25 +158,15 @@ static int Fill_thedate( time_t *nowTime )
                         Atime->tm_mon+1,Atime->tm_mday,Atime->tm_year+1900,
                         Atime->tm_hour, Atime->tm_min, Atime->tm_sec);
 
-    if( G->Kflag == 0 )
+    if( G->Kday == 99 || G->Kday != Atime->tm_mday )
     {
-        G->Kflag  = 1;
         G->Kyear  = Atime->tm_year+1900;
         G->Kmonth = Atime->tm_mon+1;
         G->Kday   = Atime->tm_mday;
-
-        has_changed = 1;
-    }
-    else
-    {
-        has_changed = 0;
-
-        if( G->Kyear  != Atime->tm_year+1900 )   {G->Kyear  = Atime->tm_year+1900; has_changed = 1;}
-        if( G->Kmonth != Atime->tm_mon+1     )   {G->Kmonth = Atime->tm_mon+1;     has_changed = 1;}
-        if( G->Kday   != Atime->tm_mday      )   {G->Kday   = Atime->tm_mday;      has_changed = 1;}
+        return 1;
     }
 
-    return has_changed;
+    return 0;
 }
 
 
