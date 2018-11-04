@@ -134,11 +134,14 @@ static void Make_Dirs_and_Assign_LOGfilename( void )
 
     if( check_and_make(LOGFILE_BASE) ) {return;}                   // non-zero return: Error with mkdir
 
-    sprintf(YearDirName,"%s/y%d",LOGFILE_BASE,G->Kyear);           // name for the 'year' directory.  Example:  'y2018'
+    if( G->Kyear >= 2018 )
+    {
+        sprintf(YearDirName,"%s/y%d",LOGFILE_BASE,G->Kyear);           // name for the 'year' directory.  Example:  'y2018'
 
-    if( check_and_make(YearDirName) ) {return;}                    // non-zero return: Error with mkdir
+        if( check_and_make(YearDirName) ) {return;}                    // non-zero return: Error with mkdir
     
-    sprintf(G->LOGfilename,"%s/d%02d_%02d.txt",YearDirName,G->Kmonth,G->Kday);    // full path-name is this
+        sprintf(G->LOGfilename,"%s/d%02d_%02d.txt",YearDirName,G->Kmonth,G->Kday);    // full path-name is this
+    }
 }
 
 
@@ -218,7 +221,7 @@ static int check_thedate( void )
 {
     char *S = strrchr(Globals.thedate,'/');         // finds the last '/' in the string
 
-    if( S == NULL || S[1] == '6' )
+    if( S == NULL || S[1] == '1' )
         return 0;
     else
         return 1;
