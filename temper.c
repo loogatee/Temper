@@ -14,10 +14,38 @@
  * limitations  under the License.
  */
 
+/*
+   Notes on Solar Charger RTC.
+
+   This date:    11/04/2018, 15:13:02
+
+   Is this on the charger:
+
+     10022     6923       3331
+    0x2726    0x1b0b      0x0d03
+
+    39 38     27 11       13 3
+
+
+                3 = April, where Jan = 0
+               13 = 2013,  where 00 = 2000
+               11 = hrs in day, where 00 = midnite
+               27 = April 28th, where 00 = 1st day of month
+               38 = seconds
+               39 = minutes
+
+   The 2 dates:
+       11/04/2018, 15:13:02
+       04/28/2013, 11:39:38
+
+       Time difference = 174,195,204 seconds
+*/
+
 #include <stdio.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/time.h>
+#include <signal.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <stdlib.h>
@@ -46,7 +74,7 @@ typedef struct
     char       thedate[40];
     float      StoredReading;
     char       HIDname[HIDNAMELEN];
-    char       LOGfilename[LOGNAMELEN];
+    char       LOGfilename[LOGNAMELEN];        // temperature
     int        Kyear,Kmonth,Kday;
     lua_State *LS1;
 } Globes;
@@ -143,7 +171,6 @@ static void Make_Dirs_and_Assign_LOGfilename( void )
         sprintf(G->LOGfilename,"%s/d%02d_%02d.txt",YearDirName,G->Kmonth,G->Kday);    // full path-name is this
     }
 }
-
 
 static time_t Get_Midnite_Seconds( void )
 {
@@ -281,15 +308,16 @@ static int TakeTemperatureReading(int fd, char *tbuf)
 
 int main( int argc, char *argv[] )
 {
-    int               fd,lenr,temperature;
+    int               fd,lenr,temperature,fd1,lenslr;
     unsigned int      secsdiff,usecsdiff;
     time_t            midniteSecs,nowSecs;
-    char              tbuf[180];
+    char              tbuf[240];
+    char              tbuf2[181];
     struct timeval    tv1,tv2;
     struct timezone   tz;
     Globes           *G = &Globals;
 
-
+    signal(SIGCHLD, SIG_IGN);
     if(fork()) {return 0;}                      // Parent returns. Child executes as background process
 
     Init_Globals(argv[0]);
@@ -316,6 +344,13 @@ int main( int argc, char *argv[] )
         }
         gettimeofday(&tv1,&tz);                                // because it has micro-seconds
 
+        system("/usr/bin/python /opt/epsolar-tracer/info.py > /var/tmp/tmpabcX");   // stash the output somewhere
+        fd1 = open("/var/tmp/tmpabcX",O_RDONLY);                                    // open same file we just wrote
+        lenslr=read(fd1,tbuf2,180);                                                 // read it
+        if( lenslr >= 0 ) { tbuf2[lenslr] = 0; }                                    // NEED string termination
+        close(fd1);                                                                 // tidy up
+        unlink("/var/tmp/tmpabcX");                                                 // remove file
+
         if( (fd>0) && ((lenr=TakeTemperatureReading(fd,tbuf)) >= 0) )   // return data of 8 bytes is in tbuf
         {
             close(fd);
@@ -326,6 +361,9 @@ int main( int argc, char *argv[] )
                 G->StoredReading = (((float)temperature/100.0) * 1.8) + 32.0;
             }
 
+            if( lenslr > 0 )
+                sprintf(tbuf,"%ld,%s,%.1f,%s",(nowSecs-midniteSecs),G->thedate,G->StoredReading,tbuf2);
+            else
             sprintf(tbuf,"%ld,%s,%.1f\n",(nowSecs-midniteSecs),G->thedate,G->StoredReading);
 
             //
