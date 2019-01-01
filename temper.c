@@ -51,10 +51,14 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-
+#include <zmq.h>
+#include <assert.h>
+#include <pthread.h>
 #include <lua.h>
 #include <lauxlib.h>
 #include <lualib.h>
+
+#include "myZMQnames.h"
 
 
 
@@ -76,6 +80,9 @@ typedef struct
     char       HIDname[HIDNAMELEN];
     char       LOGfilename[LOGNAMELEN];        // temperature
     int        Kyear,Kmonth,Kday;
+    void       *contextBCh,*contextSig;
+    void       *BackChan,*SignalChan;
+    char       MostRecentData[256];
     lua_State *LS1;
 } Globes;
 
@@ -86,6 +93,29 @@ static void Find_the_Hidraw_Device( void );
 
 
 /* ------------------------------------ */
+
+
+static void *TheSignaler( void *dummy )
+{
+    int    rc;
+    void   *lcontext,*lSigChan;
+    char   dbuf[2];
+
+    lcontext = zmq_ctx_new();
+    lSigChan = zmq_socket ( lcontext,  ZMQ_PUSH         );
+    rc       = zmq_bind   ( lSigChan,  ZMQPORT_SIGNALER );   assert(rc == 0);
+
+    dbuf[0] = 'A';
+    dbuf[1] = 0;
+
+    while( 1 )
+    {
+        usleep( 15000000 );
+        zmq_send( lSigChan, dbuf, 2, 0);
+    }
+
+    return 0;
+}
 
 
 
@@ -116,8 +146,33 @@ static void Init_Globals( char *Pstr )
         return;
     }
 
+    strcpy(G->MostRecentData,"<empty>");
+
     Find_the_Hidraw_Device();
 }
+
+
+static void Init_PacketHandler_ZMQs( void )
+{
+    char    dbuf[60];
+    int     rc;
+    Globes *G = &Globals;
+
+    G->contextSig  = zmq_ctx_new();
+    G->SignalChan  = zmq_socket ( G->contextSig,  ZMQ_PULL            );
+    rc             = zmq_bind   ( G->SignalChan,  ZMQPORT_SIGNALER    );   assert(rc == 0);
+
+    G->contextBCh  = zmq_ctx_new();
+    G->BackChan    = zmq_socket ( G->contextBCh,  ZMQ_REP             );
+    rc             = zmq_bind   ( G->BackChan,    ZMQPORT_BACKCHANNEL );    assert(rc == 0);
+
+    strcpy((void *)dbuf, ZMQPORT_SIGNALER);       chmod((void *)&dbuf[6], 0777);
+    strcpy((void *)dbuf, ZMQPORT_BACKCHANNEL);    chmod((void *)&dbuf[6], 0777);
+}
+
+
+
+
 
 
 static int check_and_make( char *istr )
@@ -304,28 +359,55 @@ static int TakeTemperatureReading(int fd, char *tbuf)
     return llen;
 }
 
+static void do_backchannel_response( void )
+{
+    char   Sbuf[80];
+    Globes *G = &Globals;
+
+
+    zmq_recv( G->BackChan, Sbuf, 40, 0 );
+
+    // Can ignore the incoming, because there's only 1 thing to do for now
+
+    zmq_send( G->BackChan, G->MostRecentData, strlen(G->MostRecentData), 0 );
+}
+
 
 
 int main( int argc, char *argv[] )
 {
     int               fd,lenr,temperature,fd1,lenslr;
-    unsigned int      secsdiff,usecsdiff;
+    //unsigned int      secsdiff,usecsdiff;
     time_t            midniteSecs,nowSecs;
     char              tbuf[240];
     char              tbuf2[181];
-    struct timeval    tv1,tv2;
-    struct timezone   tz;
+    pthread_t         Sign_threadID;
+    zmq_pollitem_t    PollItems[2];
     Globes           *G = &Globals;
 
     signal(SIGCHLD, SIG_IGN);
     if(fork()) {return 0;}                      // Parent returns. Child executes as background process
 
     Init_Globals(argv[0]);
+    Init_PacketHandler_ZMQs();
 
     sprintf(tbuf,"%d",(unsigned int)getpid());                 // hey, you pid!
     fd = open(TEMPERPIDFILE,O_WRONLY|O_CREAT|O_TRUNC,0644);    // create if not there. Trunc if there
     write(fd,tbuf,strlen(tbuf));                               // note confidence: no error checking!
     close(fd);                                                 // done. Close.  The pid was written!
+
+    pthread_create(&Sign_threadID, 0, TheSignaler, 0);
+
+
+    PollItems[0].socket  = G->SignalChan;
+    PollItems[0].fd      = 0;
+    PollItems[0].events  = ZMQ_POLLIN;
+    PollItems[0].revents = 0;
+
+    PollItems[1].socket  = G->BackChan;
+    PollItems[1].fd      = 0;
+    PollItems[1].events  = ZMQ_POLLIN;
+    PollItems[1].revents = 0;
 
 
     while(1)
@@ -342,7 +424,6 @@ int main( int argc, char *argv[] )
             Make_Dirs_and_Assign_LOGfilename();
             midniteSecs = Get_Midnite_Seconds();
         }
-        gettimeofday(&tv1,&tz);                                // because it has micro-seconds
 
         system("/usr/bin/python /opt/epsolar-tracer/info.py > /var/tmp/tmpabcX");   // stash the output somewhere
         fd1 = open("/var/tmp/tmpabcX",O_RDONLY);                                    // open same file we just wrote
@@ -361,41 +442,59 @@ int main( int argc, char *argv[] )
                 G->StoredReading = (((float)temperature/100.0) * 1.8) + 32.0;
             }
 
+            // NOTE:  if lenr <= 0, old value from G->StoredReading will be used
+
             if( lenslr > 0 )
                 sprintf(tbuf,"%ld,%s,%.1f,%s",(nowSecs-midniteSecs),G->thedate,G->StoredReading,tbuf2);
             else
-            sprintf(tbuf,"%ld,%s,%.1f\n",(nowSecs-midniteSecs),G->thedate,G->StoredReading);
+                sprintf(tbuf,"%ld,%s,%.1f,<nosolar>\n",(nowSecs-midniteSecs),G->thedate,G->StoredReading);
 
-            //
-            // Queue up the data here.  4 every minute.   1hr=240 entries.  Memory is not an issue
-            // Temperature data could be valid, but date info could be bad
-            //
-
-            if( check_thedate() == 1 )
-            {
-                if( (fd=open(G->LOGfilename,O_WRONLY|O_APPEND|O_CREAT,0666)) > 0 )
-                {
-                    write(fd,tbuf,strlen(tbuf));
-                    close(fd);
-                }
-                else
-                {
-                    sprintf(tbuf, "ERROR Opening LOGfilename (%s)", G->LOGfilename);
-                    perror(tbuf);
-                }
-            }
         }
         else
         {
             if( fd>0 ) close(fd);     // close down if possible
+
+            if( lenslr > 0 )
+                sprintf(tbuf,"%ld,%s,XX,%s",(nowSecs-midniteSecs),G->thedate,tbuf2);
+            else
+                sprintf(tbuf,"%ld,%s,XX,<nosolar>\n",(nowSecs-midniteSecs),G->thedate);
         }
 
-        gettimeofday(&tv2,&tz);
 
-        secsdiff  = tv2.tv_sec - tv1.tv_sec;
-        usecsdiff = (secsdiff * 1000000) + (tv2.tv_usec - tv1.tv_usec + 70000);   // 60100 for wally
+        strcpy(G->MostRecentData,tbuf);
 
-        usleep( 15000000 - usecsdiff );
+        //
+        // Queue up the data here.  4 every minute.   1hr=240 entries.  Memory is not an issue
+        // Temperature data could be valid, but date info could be bad
+        //
+
+        if( check_thedate() == 1 )
+        {
+            if( (fd=open(G->LOGfilename,O_WRONLY|O_APPEND|O_CREAT,0666)) > 0 )
+            {
+                write(fd,tbuf,strlen(tbuf));
+                close(fd);
+            }
+            else
+            {
+                sprintf(tbuf, "ERROR Opening LOGfilename (%s)", G->LOGfilename);
+                perror(tbuf);
+            }
+        }
+
+
+
+        while( 1 )
+        {
+            zmq_poll( PollItems, 2, -1 );
+
+            if(   PollItems[1].revents & ZMQ_POLLIN  ) { do_backchannel_response(); }
+            if( !(PollItems[0].revents & ZMQ_POLLIN) ) { continue; }
+
+            zmq_recv( G->SignalChan, tbuf, 2, 0 );       // receive a couple of dummy bytes
+            break;
+        }
+
     }
 }
 
