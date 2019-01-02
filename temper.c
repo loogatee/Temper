@@ -132,6 +132,12 @@ static void Init_Globals( char *Pstr )
 }
 
 
+//
+//   Creates 2 ZMQ Channels:
+//       - Signal Channel
+//       - Command Channel
+//   Then sets permissions on each of the channels
+//
 static void Init_PacketHandler_ZMQs( void )
 {
     char    dbuf[60];
@@ -139,14 +145,20 @@ static void Init_PacketHandler_ZMQs( void )
     void   *contextBCh,*contextSig;
     Globes *G = &Globals;
 
+    //   Signal Channel
+    //       - When signal is received, time to Get Data! Get both USB Temper and SolarCharger Registers.
     contextSig    = zmq_ctx_new();
     G->SignalChan = zmq_socket ( contextSig,     ZMQ_PULL            );
     rc            = zmq_bind   ( G->SignalChan,  ZMQPORT_SIGNALER    );   assert(rc == 0);
 
+    //   Command Channel
+    //       - Receive a command, then send a response
+    //       - Command would typically be from a Web (Monkey) back-end
     contextBCh  = zmq_ctx_new();
     G->CmdChan  = zmq_socket ( contextBCh,  ZMQ_REP            );
     rc          = zmq_bind   ( G->CmdChan,  ZMQPORT_CMDCHANNEL );    assert(rc == 0);
 
+    //   revisit
     strcpy((void *)dbuf, ZMQPORT_SIGNALER);      chmod((void *)&dbuf[6], 0777);
     strcpy((void *)dbuf, ZMQPORT_CMDCHANNEL);    chmod((void *)&dbuf[6], 0777);
 }
@@ -155,7 +167,10 @@ static void Init_PacketHandler_ZMQs( void )
 
 
 
-
+//
+//   See Make_Dirs_and_Assign_LOGfilename(), just below.
+//   check_and_make() is local to that function.
+//
 static int check_and_make( char *istr )
 {
     char          bufx[120];
@@ -196,7 +211,7 @@ static void Make_Dirs_and_Assign_LOGfilename( void )
 
     G->LOGfilename[0] = 0;
 
-    if( check_and_make(LOGFILE_BASE) ) {return;}                   // non-zero return: Error with mkdir
+    if( check_and_make(LOGFILE_BASE) ) {return;}                       // non-zero return: Error with mkdir
 
     if( G->Kyear >= 2018 )
     {
@@ -208,6 +223,14 @@ static void Make_Dirs_and_Assign_LOGfilename( void )
     }
 }
 
+
+//
+//   Ultimately this is for data display, where column 0 of the output is:
+//       - Seconds from 00:00:00 to time when data is being logged
+//       - Would be a number between 0 and (86400-1)
+//
+//   Use column 0 as the X axis.    Use 3600 as the Major Interval.
+//
 static time_t Get_Midnite_Seconds( void )
 {
     time_t      rawTime;
@@ -223,7 +246,17 @@ static time_t Get_Midnite_Seconds( void )
     return mktime(Atime);
 }
 
-
+//
+//   Column 0 is from Get_Midnite_Seconds().
+//   This function fills in column 1 and column 2:
+//        - column1:  date in mm/dd/yyyy format  
+//        - column2:  time in hh:mm:ss format     (hh is 1..24)
+//
+//   Return Value:
+//         0:    day of the month is the same 
+//         1:    day of month just changed. Will be a Signal
+//               to do something.  (like make a new log file)
+//
 static int Fill_thedate( time_t *nowTime ) 
 {
     time_t      rawTime;
@@ -250,7 +283,11 @@ static int Fill_thedate( time_t *nowTime )
 }
 
 
-
+//
+//   Finds the temper USB device.
+//   Invokes Lua to do the heavy lifting.
+//   A bit of magic sauce in here, really just the pcall
+//
 static void Find_the_Hidraw_Device( void )
 {
     const char *rp;
@@ -274,9 +311,9 @@ static void Find_the_Hidraw_Device( void )
 
 
 //
-//   input data:  "10/18/18,10:52:45"
+//   example input data:  "10/18/18,10:52:45"
 //
-//   The year will be '69' if ntp date is not set
+//   The year will be '69' if date not set (ntp, manual, charger_RTC_to_time)
 //
 //   1=good, 0=toss
 //
@@ -340,6 +377,16 @@ static int TakeTemperatureReading(int fd, char *tbuf)
     return llen;
 }
 
+
+
+//
+//   This code fulfills a Request sent over the zmq CmdChannel
+//
+//         An entity makes Request over zmq CmdChannel
+//            - where Entity is likey to be monkey web back-end (which is a lua stub)
+//            - or Could be any code that knows how to write/read zmq to/from zmq channels
+//
+//
 static void do_cmdchannel_response( void )
 {
     char   Sbuf[80];
@@ -358,7 +405,6 @@ static void do_cmdchannel_response( void )
 int main( int argc, char *argv[] )
 {
     int               fd,lenr,temperature,fd1,lenslr;
-    //unsigned int      secsdiff,usecsdiff;
     time_t            midniteSecs,nowSecs;
     char              tbuf[240];
     char              tbuf2[181];
@@ -377,14 +423,14 @@ int main( int argc, char *argv[] )
     write(fd,tbuf,strlen(tbuf));                               // note confidence: no error checking!
     close(fd);                                                 // done. Close.  The pid was written!
 
-    pthread_create(&Sign_threadID, 0, TheSignaler, 0);
+    pthread_create(&Sign_threadID, 0, TheSignaler, 0);         // thread that signals a zmq socket at a constant rate
 
-    PollItems[0].socket  = G->SignalChan;
+    PollItems[0].socket  = G->SignalChan;                      // Getting this signal means: Wakeup and Get Data
     PollItems[0].fd      = 0;
     PollItems[0].events  = ZMQ_POLLIN;
     PollItems[0].revents = 0;
 
-    PollItems[1].socket  = G->CmdChan;
+    PollItems[1].socket  = G->CmdChan;                         // Requests (web back-end) come through here
     PollItems[1].fd      = 0;
     PollItems[1].events  = ZMQ_POLLIN;
     PollItems[1].revents = 0;
