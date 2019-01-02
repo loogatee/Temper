@@ -99,11 +99,11 @@ static void *TheSignaler( void *dummy )
 {
     int    rc;
     void   *lcontext,*lSigChan;
-    char   dbuf[2];
+    char   dbuf[60];
 
     lcontext = zmq_ctx_new();
     lSigChan = zmq_socket ( lcontext,  ZMQ_PUSH         );
-    rc       = zmq_bind   ( lSigChan,  ZMQPORT_SIGNALER );   assert(rc == 0);
+    rc       = zmq_connect( lSigChan,  ZMQPORT_SIGNALER );   assert(rc == 0);
 
     dbuf[0] = 'A';
     dbuf[1] = 0;
@@ -111,7 +111,7 @@ static void *TheSignaler( void *dummy )
     while( 1 )
     {
         usleep( 15000000 );
-        zmq_send( lSigChan, dbuf, 2, 0);
+        rc = zmq_send( lSigChan, dbuf, 2, 0 );
     }
 
     return 0;
@@ -398,7 +398,6 @@ int main( int argc, char *argv[] )
 
     pthread_create(&Sign_threadID, 0, TheSignaler, 0);
 
-
     PollItems[0].socket  = G->SignalChan;
     PollItems[0].fd      = 0;
     PollItems[0].events  = ZMQ_POLLIN;
@@ -497,7 +496,6 @@ int main( int argc, char *argv[] )
 
     }
 }
-
 
 
 
