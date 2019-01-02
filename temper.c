@@ -13,34 +13,6 @@
  * See the License for the specific language governing permissions and
  * limitations  under the License.
  */
-
-/*
-   Notes on Solar Charger RTC.
-
-   This date:    11/04/2018, 15:13:02
-
-   Is this on the charger:
-
-     10022     6923       3331
-    0x2726    0x1b0b      0x0d03
-
-    39 38     27 11       13 3
-
-
-                3 = April, where Jan = 0
-               13 = 2013,  where 00 = 2000
-               11 = hrs in day, where 00 = midnite
-               27 = April 28th, where 00 = 1st day of month
-               38 = seconds
-               39 = minutes
-
-   The 2 dates:
-       11/04/2018, 15:13:02
-       04/28/2013, 11:39:38
-
-       Time difference = 174,195,204 seconds
-*/
-
 #include <stdio.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -58,8 +30,6 @@
 #include <lauxlib.h>
 #include <lualib.h>
 
-#include "myZMQnames.h"
-
 
 
 #define HIDNAME         "/dev/hidrawX"
@@ -69,6 +39,10 @@
 
 #define HIDNAMELEN      40
 #define LOGNAMELEN      80
+#define INITIAL_KDAY    99
+
+#define ZMQPORT_CMDCHANNEL     "ipc:///var/tmp/TemperCommandChannel"
+#define ZMQPORT_SIGNALER       "ipc:///var/tmp/TemperSignalChannel"
 
 
 typedef unsigned char   u8;
@@ -78,10 +52,9 @@ typedef struct
     char       thedate[40];
     float      StoredReading;
     char       HIDname[HIDNAMELEN];
-    char       LOGfilename[LOGNAMELEN];        // temperature
+    char       LOGfilename[LOGNAMELEN];
     int        Kyear,Kmonth,Kday;
-    void       *contextBCh,*contextSig;
-    void       *BackChan,*SignalChan;
+    void       *CmdChan,*SignalChan;
     char       MostRecentData[256];
     lua_State *LS1;
 } Globes;
@@ -95,6 +68,13 @@ static void Find_the_Hidraw_Device( void );
 /* ------------------------------------ */
 
 
+
+
+
+//
+//    Runs in a seperate thread.   See the pthread_create() call in main.
+//    Signals main at a constant frequency.
+//
 static void *TheSignaler( void *dummy )
 {
     int    rc;
@@ -105,8 +85,8 @@ static void *TheSignaler( void *dummy )
     lSigChan = zmq_socket ( lcontext,  ZMQ_PUSH         );
     rc       = zmq_connect( lSigChan,  ZMQPORT_SIGNALER );   assert(rc == 0);
 
-    dbuf[0] = 'A';
-    dbuf[1] = 0;
+    dbuf[0] = 'A';     // for now, anything
+    dbuf[1] = 0;       //   make it a proper 'C' string
 
     while( 1 )
     {
@@ -114,41 +94,41 @@ static void *TheSignaler( void *dummy )
         rc = zmq_send( lSigChan, dbuf, 2, 0 );
     }
 
-    return 0;
+    return 0;      // its never gonna get here.  This statement makes the compiler happy
 }
 
 
 
 static void Init_Globals( char *Pstr )
 {
-    char         buf[80],*S;
+    char         buf[80],*S,buf1[100];
     Globes *G = &Globals;
 
-    G->StoredReading = -1000.0;                // Big number is an initial condition
-    G->Kday          = 99;
+    G->StoredReading = -1000.0;                    // Big number is an initial condition
+    G->Kday          = INITIAL_KDAY;               // A number that is not a day of the month 
 
-    strcpy(G->HIDname,(const char *)HIDNAME);  // Default.  Can be overwritten by discovery
+    strcpy(G->HIDname,(const char *)HIDNAME);      // Default.  Can be overwritten by discovery
 
-    S  = strrchr((const char *)Pstr,'/');      // Pstr is the entire path of the temper executable
-    *S = 0;                                    // effectively lops off '/temper', leaving only the path
-    sprintf(buf,"%s/%s",Pstr,LUTILS);          // new name is <path>/lutils.lua
-    write(STDERR_FILENO,buf,strlen(buf));      // send to stderr if you want to look at the name
-    write(STDERR_FILENO,"\n\r",2);             // make the log look nice
+    S  = strrchr((const char *)Pstr,'/');          // Pstr is the entire path of the temper executable
+    *S = 0;                                        // effectively lops off '/temper', leaving only the path
+    sprintf(buf,"%s/%s",Pstr,LUTILS);              // new name is <path>/lutils.lua
+    sprintf(buf1,"lutils full path: %s\n\r",buf);  // provide context to this write to stderr
+    write(STDERR_FILENO,buf1,strlen(buf1));        // send to stderr if you want to look at the name
     
 
-    G->LS1 = luaL_newstate();                  // Set up the Lua environment
-    luaL_openlibs(G->LS1);                     //   doesn't seem to work without this
+    G->LS1 = luaL_newstate();                      // Set up the Lua environment
+    luaL_openlibs(G->LS1);                         //   doesn't seem to work without this
 
-    if( luaL_dofile(G->LS1, buf) != 0 )        // Can now extend the app with these lua functions
+    if( luaL_dofile(G->LS1, buf) != 0 )            // Can now extend the app with these lua functions
     {
         sprintf(buf,"luaL_dofile: ERROR opening %s\n", LUTILS);
         write(STDERR_FILENO,buf,strlen(buf));
         return;
     }
 
-    strcpy(G->MostRecentData,"<empty>");
+    strcpy(G->MostRecentData,"<empty>");           // for Data Requests from the Command Channel
 
-    Find_the_Hidraw_Device();
+    Find_the_Hidraw_Device();                      // the 'Temper' USB device
 }
 
 
@@ -156,18 +136,19 @@ static void Init_PacketHandler_ZMQs( void )
 {
     char    dbuf[60];
     int     rc;
+    void   *contextBCh,*contextSig;
     Globes *G = &Globals;
 
-    G->contextSig  = zmq_ctx_new();
-    G->SignalChan  = zmq_socket ( G->contextSig,  ZMQ_PULL            );
-    rc             = zmq_bind   ( G->SignalChan,  ZMQPORT_SIGNALER    );   assert(rc == 0);
+    contextSig    = zmq_ctx_new();
+    G->SignalChan = zmq_socket ( contextSig,     ZMQ_PULL            );
+    rc            = zmq_bind   ( G->SignalChan,  ZMQPORT_SIGNALER    );   assert(rc == 0);
 
-    G->contextBCh  = zmq_ctx_new();
-    G->BackChan    = zmq_socket ( G->contextBCh,  ZMQ_REP             );
-    rc             = zmq_bind   ( G->BackChan,    ZMQPORT_BACKCHANNEL );    assert(rc == 0);
+    contextBCh  = zmq_ctx_new();
+    G->CmdChan  = zmq_socket ( contextBCh,  ZMQ_REP            );
+    rc          = zmq_bind   ( G->CmdChan,  ZMQPORT_CMDCHANNEL );    assert(rc == 0);
 
-    strcpy((void *)dbuf, ZMQPORT_SIGNALER);       chmod((void *)&dbuf[6], 0777);
-    strcpy((void *)dbuf, ZMQPORT_BACKCHANNEL);    chmod((void *)&dbuf[6], 0777);
+    strcpy((void *)dbuf, ZMQPORT_SIGNALER);      chmod((void *)&dbuf[6], 0777);
+    strcpy((void *)dbuf, ZMQPORT_CMDCHANNEL);    chmod((void *)&dbuf[6], 0777);
 }
 
 
@@ -257,7 +238,7 @@ static int Fill_thedate( time_t *nowTime )
                         Atime->tm_mon+1,Atime->tm_mday,Atime->tm_year+1900,
                         Atime->tm_hour, Atime->tm_min, Atime->tm_sec);
 
-    if( G->Kday == 99 || G->Kday != Atime->tm_mday )
+    if( G->Kday == INITIAL_KDAY || G->Kday != Atime->tm_mday )
     {
         G->Kyear  = Atime->tm_year+1900;
         G->Kmonth = Atime->tm_mon+1;
@@ -359,17 +340,17 @@ static int TakeTemperatureReading(int fd, char *tbuf)
     return llen;
 }
 
-static void do_backchannel_response( void )
+static void do_cmdchannel_response( void )
 {
     char   Sbuf[80];
     Globes *G = &Globals;
 
 
-    zmq_recv( G->BackChan, Sbuf, 40, 0 );
+    zmq_recv( G->CmdChan, Sbuf, 40, 0 );
 
     // Can ignore the incoming, because there's only 1 thing to do for now
 
-    zmq_send( G->BackChan, G->MostRecentData, strlen(G->MostRecentData), 0 );
+    zmq_send( G->CmdChan, G->MostRecentData, strlen(G->MostRecentData), 0 );
 }
 
 
@@ -403,7 +384,7 @@ int main( int argc, char *argv[] )
     PollItems[0].events  = ZMQ_POLLIN;
     PollItems[0].revents = 0;
 
-    PollItems[1].socket  = G->BackChan;
+    PollItems[1].socket  = G->CmdChan;
     PollItems[1].fd      = 0;
     PollItems[1].events  = ZMQ_POLLIN;
     PollItems[1].revents = 0;
@@ -487,7 +468,7 @@ int main( int argc, char *argv[] )
         {
             zmq_poll( PollItems, 2, -1 );
 
-            if(   PollItems[1].revents & ZMQ_POLLIN  ) { do_backchannel_response(); }
+            if(   PollItems[1].revents & ZMQ_POLLIN  ) { do_cmdchannel_response(); }
             if( !(PollItems[0].revents & ZMQ_POLLIN) ) { continue; }
 
             zmq_recv( G->SignalChan, tbuf, 2, 0 );       // receive a couple of dummy bytes
@@ -498,4 +479,32 @@ int main( int argc, char *argv[] )
 }
 
 
+
+
+/*
+   Notes on Solar Charger RTC.
+
+   This date:    11/04/2018, 15:13:02
+
+   Is this on the charger:
+
+     10022     6923       3331
+    0x2726    0x1b0b      0x0d03
+
+    39 38     27 11       13 3
+
+
+                3 = April, where Jan = 0
+               13 = 2013,  where 00 = 2000
+               11 = hrs in day, where 00 = midnite
+               27 = April 28th, where 00 = 1st day of month
+               38 = seconds
+               39 = minutes
+
+   The 2 dates:
+       11/04/2018, 15:13:02
+       04/28/2013, 11:39:38
+
+       Time difference = 174,195,204 seconds
+*/
 
