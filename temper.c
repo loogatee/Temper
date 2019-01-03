@@ -41,8 +41,8 @@
 #define LOGNAMELEN      80
 #define INITIAL_KDAY    99
 
-#define ZMQPORT_CMDCHANNEL     "ipc:///var/tmp/TemperCommandChannel"
-#define ZMQPORT_SIGNALER       "ipc:///var/tmp/TemperSignalChannel"
+#define TMQ_CMDCHANNEL  "ipc:///var/tmp/TemperCommandChannel"
+#define TMQ_SIGNALER    "ipc:///var/tmp/TemperSignalChannel"
 
 
 typedef unsigned char   u8;
@@ -82,8 +82,8 @@ static void *TheSignaler( void *dummy )
     char   dbuf[60];
 
     lcontext = zmq_ctx_new();
-    lSigChan = zmq_socket ( lcontext,  ZMQ_PUSH         );
-    rc       = zmq_connect( lSigChan,  ZMQPORT_SIGNALER );   assert(rc == 0);
+    lSigChan = zmq_socket ( lcontext,  ZMQ_PUSH     );
+    rc       = zmq_connect( lSigChan,  TMQ_SIGNALER );   assert(rc == 0);
 
     dbuf[0] = 'A';     // for now, anything
     dbuf[1] = 0;       //   make it a proper 'C' string
@@ -148,19 +148,19 @@ static void Init_PacketHandler_ZMQs( void )
     //   Signal Channel
     //       - When signal is received, time to Get Data! Get both USB Temper and SolarCharger Registers.
     contextSig    = zmq_ctx_new();
-    G->SignalChan = zmq_socket ( contextSig,     ZMQ_PULL            );
-    rc            = zmq_bind   ( G->SignalChan,  ZMQPORT_SIGNALER    );   assert(rc == 0);
+    G->SignalChan = zmq_socket ( contextSig,     ZMQ_PULL     );
+    rc            = zmq_bind   ( G->SignalChan,  TMQ_SIGNALER );   assert(rc == 0);
 
     //   Command Channel
     //       - Receive a command, then send a response
-    //       - Command would typically be from a Web (Monkey) back-end
+    //       - Command would typically be from Web-Server backend
     contextBCh  = zmq_ctx_new();
-    G->CmdChan  = zmq_socket ( contextBCh,  ZMQ_REP            );
-    rc          = zmq_bind   ( G->CmdChan,  ZMQPORT_CMDCHANNEL );    assert(rc == 0);
+    G->CmdChan  = zmq_socket ( contextBCh,  ZMQ_REP        );
+    rc          = zmq_bind   ( G->CmdChan,  TMQ_CMDCHANNEL );    assert(rc == 0);
 
     //   revisit
-    strcpy((void *)dbuf, ZMQPORT_SIGNALER);      chmod((void *)&dbuf[6], 0777);
-    strcpy((void *)dbuf, ZMQPORT_CMDCHANNEL);    chmod((void *)&dbuf[6], 0777);
+    strcpy((void *)dbuf, TMQ_SIGNALER);      chmod((void *)&dbuf[6], 0777);
+    strcpy((void *)dbuf, TMQ_CMDCHANNEL);    chmod((void *)&dbuf[6], 0777);
 }
 
 
@@ -311,11 +311,12 @@ static void Find_the_Hidraw_Device( void )
 
 
 //
-//   example input data:  "10/18/18,10:52:45"
+//   example input data:  "10/18/2018,10:52:45"
 //
-//   The year will be '69' if date not set (ntp, manual, charger_RTC_to_time)
+//   The year will be '1969' if date not set (ntp, manual, charger_RTC_to_time)
 //
-//   1=good, 0=toss
+//   Result:    1=good
+//              0=Date has not been set
 //
 static int check_thedate( void )
 {
@@ -328,7 +329,9 @@ static int check_thedate( void )
 }
 
 
-
+//   This reads from the USB Temper device.
+//   Took quite awhile to dial this in, I wouldn't mess with it.
+//
 //   returns:
 //        -1  on error from select() or read()
 //         0  if the device never put any data on the wire
@@ -451,10 +454,10 @@ int main( int argc, char *argv[] )
             midniteSecs = Get_Midnite_Seconds();
         }
 
-        system("/usr/bin/python /opt/epsolar-tracer/info.py > /var/tmp/tmpabcX");   // stash the output somewhere
+        system("/usr/bin/python /opt/epsolar-tracer/info.py > /var/tmp/tmpabcX");   // Read Charger Data
+
         fd1 = open("/var/tmp/tmpabcX",O_RDONLY);                                    // open same file we just wrote
-        lenslr=read(fd1,tbuf2,180);                                                 // read it
-        if( lenslr >= 0 ) { tbuf2[lenslr] = 0; }                                    // NEED string termination
+        if( (lenslr=read(fd1,tbuf2,180)) >= 0 ) { tbuf2[lenslr] = 0; }              // NEED string termination
         close(fd1);                                                                 // tidy up
         unlink("/var/tmp/tmpabcX");                                                 // remove file
 
@@ -509,7 +512,8 @@ int main( int argc, char *argv[] )
         }
 
 
-
+        // Wait on the ZMQ until something happens.  The Signaler will hit every
+        // 15 seconds, and the cmd channel requests will come in randomly
         while( 1 )
         {
             zmq_poll( PollItems, 2, -1 );
