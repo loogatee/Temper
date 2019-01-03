@@ -286,7 +286,7 @@ static int Fill_thedate( time_t *nowTime )
 //
 //   Finds the temper USB device.
 //   Invokes Lua to do the heavy lifting.
-//   A bit of magic sauce in here, really just the pcall
+//   A bit of magic sauce in here (really just the pcall)
 //
 static void Find_the_Hidraw_Device( void )
 {
@@ -461,42 +461,31 @@ int main( int argc, char *argv[] )
         close(fd1);                                                                 // tidy up
         unlink("/var/tmp/tmpabcX");                                                 // remove file
 
-        if( (fd>0) && ((lenr=TakeTemperatureReading(fd,tbuf)) >= 0) )   // return data of 8 bytes is in tbuf
+        if( (fd>0) && ((lenr=TakeTemperatureReading(fd,tbuf)) >= 0) )               // return data of 8 bytes is in tbuf
         {
-            close(fd);
-
-            if( lenr > 0 )                                     // StoredReading used if lenr==0
+            if( lenr > 0 )
             {
                 temperature      = ((u8)tbuf[2] << 8) + (u8)tbuf[3];
                 G->StoredReading = (((float)temperature/100.0) * 1.8) + 32.0;
             }
-
-            // NOTE:  if lenr <= 0, old value from G->StoredReading will be used
-
-            if( lenslr > 0 )
-                sprintf(tbuf,"%ld,%s,%.1f,%s",(nowSecs-midniteSecs),G->thedate,G->StoredReading,tbuf2);
-            else
-                sprintf(tbuf,"%ld,%s,%.1f,<nosolar>\n",(nowSecs-midniteSecs),G->thedate,G->StoredReading);
-
         }
+
+        if( fd>0 ) { close(fd); }
+
+        // NOTE:  if lenr <= 0, old value from G->StoredReading will be used
+        if( lenslr > 0 )
+            sprintf(tbuf,"%ld,%s,%.1f,%s",(nowSecs-midniteSecs),G->thedate,G->StoredReading,tbuf2);
         else
-        {
-            if( fd>0 ) close(fd);     // close down if possible
-
-            if( lenslr > 0 )
-                sprintf(tbuf,"%ld,%s,XX,%s",(nowSecs-midniteSecs),G->thedate,tbuf2);
-            else
-                sprintf(tbuf,"%ld,%s,XX,<nosolar>\n",(nowSecs-midniteSecs),G->thedate);
-        }
+            sprintf(tbuf,"%ld,%s,%.1f,<nosolar>\n",(nowSecs-midniteSecs),G->thedate,G->StoredReading);
 
 
-        strcpy(G->MostRecentData,tbuf);
+        strcpy(G->MostRecentData,tbuf);                                             // Data cache for the CMD Channel
 
         //
         // Queue up the data here.  4 every minute.   1hr=240 entries.  Memory is not an issue
-        // Temperature data could be valid, but date info could be bad
+        // Temperature data could be valid, but date info could be bad.
+        // 'bad' being 1969, and 'bad' meaning that no data gets logged.
         //
-
         if( check_thedate() == 1 )
         {
             if( (fd=open(G->LOGfilename,O_WRONLY|O_APPEND|O_CREAT,0666)) > 0 )
