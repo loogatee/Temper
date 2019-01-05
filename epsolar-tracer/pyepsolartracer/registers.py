@@ -637,6 +637,17 @@ Register("Real time clock 3",
 #  I, 1 ),
 ];
 
+Jregisters = [
+# Real time clock 2
+Register("Real time clock 2",
+  0x9014, "D7-0 Hour, D15-8 Day",
+  I, 1 ),
+# Real time clock 3
+Register("Real time clock 3",
+  0x9015, "D7-0 Month, D15-8 Year",
+  I, 1 ),
+];
+
 coils = [
 # Coils(read-write)
 # Manual control the load
