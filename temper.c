@@ -30,6 +30,9 @@
 #include <lauxlib.h>
 #include <lualib.h>
 
+// "yes" if it is really there.
+// "no" if it is not there.
+#define USE_USB_TEMPER_DEVICE  "yes"
 
 
 #define HIDNAME         "/dev/hidrawX"
@@ -53,7 +56,7 @@ typedef struct
     float      StoredReading;
     char       HIDname[HIDNAMELEN];
     char       LOGfilename[LOGNAMELEN];
-    int        Kyear,Kmonth,Kday;
+    int        Kyear,Kmonth,Kday,use_usb_temper_device;
     void       *CmdChan,*SignalChan;
     char       MostRecentData[256];
     lua_State *LS1;
@@ -128,7 +131,12 @@ static void Init_Globals( char *Pstr )
 
     strcpy(G->MostRecentData,"<empty>");           // for Data Requests from the Command Channel
 
-    Find_the_Hidraw_Device();                      // the 'Temper' USB device
+    G->use_usb_temper_device = 0;
+    if( !strcmp("yes",USE_USB_TEMPER_DEVICE) )
+    {
+        G->use_usb_temper_device = 1;
+        Find_the_Hidraw_Device();                  // the 'Temper' USB device
+    }
 }
 
 
@@ -438,10 +446,11 @@ int main( int argc, char *argv[] )
     PollItems[1].events  = ZMQ_POLLIN;
     PollItems[1].revents = 0;
 
+    fd = -1;                                                   // will always be -1 if USE_TEMPER == "no"
 
     while(1)
     {
-        if( (fd=open(G->HIDname,O_RDWR)) < 0 )
+        if( (G->use_usb_temper_device == 1) && ((fd=open(G->HIDname,O_RDWR)) < 0) )
         {
             sprintf(tbuf, "ERROR open HIDname (%s):", G->HIDname);
             perror(tbuf);
