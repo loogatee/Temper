@@ -56,6 +56,7 @@ typedef struct
     float      StoredReading;
     char       HIDname[HIDNAMELEN];
     char       LOGfilename[LOGNAMELEN];
+    char       MRfilename[LOGNAMELEN];                      // Most recent record
     int        Kyear,Kmonth,Kday,use_usb_temper_device;
     void       *CmdChan,*SignalChan;
     char       MostRecentData[256];
@@ -218,6 +219,7 @@ static void Make_Dirs_and_Assign_LOGfilename( void )
     Globes *G = &Globals;
 
     G->LOGfilename[0] = 0;
+    G->MRfilename[0] = 0;
 
     if( check_and_make(LOGFILE_BASE) ) {return;}                       // non-zero return: Error with mkdir
 
@@ -228,6 +230,7 @@ static void Make_Dirs_and_Assign_LOGfilename( void )
         if( check_and_make(YearDirName) ) {return;}                    // non-zero return: Error with mkdir
     
         sprintf(G->LOGfilename,"%s/d%02d_%02d.txt",YearDirName,G->Kmonth,G->Kday);    // full path-name is this
+        sprintf(G->MRfilename,"%s/MostRecent.txt",LOGFILE_BASE);                      // MR path-name is this
     }
 }
 
@@ -507,6 +510,17 @@ int main( int argc, char *argv[] )
                 sprintf(tbuf, "ERROR Opening LOGfilename (%s)", G->LOGfilename);
                 perror(tbuf);
             }
+
+            if( (fd=open(G->MRfilename,O_WRONLY|O_CREAT,0666)) > 0 )
+            {
+                write(fd,tbuf,strlen(tbuf));
+                close(fd);
+            }
+            else
+            {
+                sprintf(tbuf, "ERROR Opening MRfilename (%s)", G->MRfilename);
+                perror(tbuf);
+            }
         }
 
 
@@ -550,9 +564,35 @@ int main( int argc, char *argv[] )
                39 = minutes
 
    The 2 dates:
-       11/04/2018, 15:13:02
        04/28/2013, 11:39:38
+       11/04/2018, 15:13:02
 
        Time difference = 174,195,204 seconds
+
+
+     This date: 08/09/2019, 16:42:57
+
+                11319   7181     3337
+                 2c37   1c0d     0d09
+                 
+                44 55    28 13    13 9
+
+                9 = Oct, where Jan = 0
+               13 = 2013,  where 00 = 2000
+               13 = hrs in day, where 00 = midnite
+               28 = Oct 29th, where 00 = 1st day of month
+               55 = seconds
+               44 = minutes
+
+   The 2 dates:
+       10/29/2013, 11:39:38
+       08/09/2019, 16:42:57
+-----------------------------------------
+
+       04/28/2013, 10/29/2013
+       11/04/2018, 08/09/2019
+
+       Conclusion is that the Epever rtc is not advancing when
+       batteries are disconnected.  makes sense.
 */
 
