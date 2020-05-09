@@ -30,6 +30,9 @@
 #include <lauxlib.h>
 #include <lualib.h>
 
+// "yes" if it is really there.
+// "no" if it is not there.
+#define USE_USB_TEMPER_DEVICE  "no"
 
 
 #define HIDNAME         "/dev/hidrawX"
@@ -53,7 +56,8 @@ typedef struct
     float      StoredReading;
     char       HIDname[HIDNAMELEN];
     char       LOGfilename[LOGNAMELEN];
-    int        Kyear,Kmonth,Kday;
+    char       MRfilename[LOGNAMELEN];                      // Most recent record
+    int        Kyear,Kmonth,Kday,use_usb_temper_device;
     void       *CmdChan,*SignalChan;
     char       MostRecentData[256];
     lua_State *LS1;
@@ -65,6 +69,7 @@ static Globes    Globals;
 static void Find_the_Hidraw_Device( void );
 
 
+// ( /dev/hidrawX )
 /* ------------------------------------ */
 
 
@@ -128,7 +133,12 @@ static void Init_Globals( char *Pstr )
 
     strcpy(G->MostRecentData,"<empty>");           // for Data Requests from the Command Channel
 
-    Find_the_Hidraw_Device();                      // the 'Temper' USB device
+    G->use_usb_temper_device = 0;
+    if( !strcmp("yes",USE_USB_TEMPER_DEVICE) )
+    {
+        G->use_usb_temper_device = 1;
+        Find_the_Hidraw_Device();                  // the 'Temper' USB device
+    }
 }
 
 
@@ -210,6 +220,7 @@ static void Make_Dirs_and_Assign_LOGfilename( void )
     Globes *G = &Globals;
 
     G->LOGfilename[0] = 0;
+    G->MRfilename[0] = 0;
 
     if( check_and_make(LOGFILE_BASE) ) {return;}                       // non-zero return: Error with mkdir
 
@@ -220,6 +231,7 @@ static void Make_Dirs_and_Assign_LOGfilename( void )
         if( check_and_make(YearDirName) ) {return;}                    // non-zero return: Error with mkdir
     
         sprintf(G->LOGfilename,"%s/d%02d_%02d.txt",YearDirName,G->Kmonth,G->Kday);    // full path-name is this
+        sprintf(G->MRfilename,"%s/MostRecent.txt",LOGFILE_BASE);                      // MR path-name is this
     }
 }
 
@@ -407,7 +419,7 @@ static void do_cmdchannel_response( void )
 
 int main( int argc, char *argv[] )
 {
-    int               fd,lenr,temperature,fd1,lenslr;
+    int               fd,lenr,temperature,fd1,lenslr,Xd;
     time_t            midniteSecs,nowSecs;
     char              tbuf[240];
     char              tbuf2[181];
@@ -438,10 +450,11 @@ int main( int argc, char *argv[] )
     PollItems[1].events  = ZMQ_POLLIN;
     PollItems[1].revents = 0;
 
+    fd = -1;                                                   // will always be -1 if USE_TEMPER == "no"
 
     while(1)
     {
-        if( (fd=open(G->HIDname,O_RDWR)) < 0 )
+        if( (G->use_usb_temper_device == 1) && ((fd=open(G->HIDname,O_RDWR)) < 0) )
         {
             sprintf(tbuf, "ERROR open HIDname (%s):", G->HIDname);
             perror(tbuf);
@@ -488,14 +501,25 @@ int main( int argc, char *argv[] )
         //
         if( check_thedate() == 1 )
         {
-            if( (fd=open(G->LOGfilename,O_WRONLY|O_APPEND|O_CREAT,0666)) > 0 )
+            if( (Xd=open(G->LOGfilename,O_WRONLY|O_APPEND|O_CREAT,0666)) > 0 )
             {
-                write(fd,tbuf,strlen(tbuf));
-                close(fd);
+                write(Xd,tbuf,strlen(tbuf));
+                close(Xd);
             }
             else
             {
                 sprintf(tbuf, "ERROR Opening LOGfilename (%s)", G->LOGfilename);
+                perror(tbuf);
+            }
+
+            if( (Xd=open(G->MRfilename,O_WRONLY|O_CREAT,0666)) > 0 )
+            {
+                write(Xd,tbuf,strlen(tbuf));
+                close(Xd);
+            }
+            else
+            {
+                sprintf(tbuf, "ERROR Opening MRfilename (%s)", G->MRfilename);
                 perror(tbuf);
             }
         }
@@ -541,9 +565,35 @@ int main( int argc, char *argv[] )
                39 = minutes
 
    The 2 dates:
-       11/04/2018, 15:13:02
        04/28/2013, 11:39:38
+       11/04/2018, 15:13:02
 
        Time difference = 174,195,204 seconds
+
+
+     This date: 08/09/2019, 16:42:57
+
+                11319   7181     3337
+                 2c37   1c0d     0d09
+                 
+                44 55    28 13    13 9
+
+                9 = Oct, where Jan = 0
+               13 = 2013,  where 00 = 2000
+               13 = hrs in day, where 00 = midnite
+               28 = Oct 29th, where 00 = 1st day of month
+               55 = seconds
+               44 = minutes
+
+   The 2 dates:
+       10/29/2013, 11:39:38
+       08/09/2019, 16:42:57
+-----------------------------------------
+
+       04/28/2013, 10/29/2013
+       11/04/2018, 08/09/2019
+
+       Conclusion is that the Epever rtc is not advancing when
+       batteries are disconnected.  makes sense.
 */
 
