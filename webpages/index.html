@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+   <meta charset="utf-8"/>
+   <title> Get Temper Values</title>
+   <style>
+      a:link    { text-decoration: none; }
+      a:visited { text-decoration: none; }
+      a:hover   { text-decoration: none; }
+      a:active  { text-decoration: none; }
+      .evenrow  { background-color: #ececec; }
+   </style>
+   <link href='/css/simple.css' rel='stylesheet' type='text/css' />
+
+
+   <script language="javascript">
+
+      var xmlHttp = new XMLHttpRequest();
+      var xHttp   = new XMLHttpRequest();
+      var cbfun   = "datebox_out";
+
+      function cb1()
+      {
+          if (xmlHttp.readyState == 4)
+          {
+              var valI,i;
+              var response = xmlHttp.responseText;
+              var xjs      = JSON.parse(response);
+
+              //console.log(response);
+
+              for( i=0; i<16; ++i ) {
+                  valI = "val" + i.toString();
+                  document.getElementById(valI).innerHTML = xjs.TemperData[i];
+              }
+          }
+      }
+
+      function cb2()
+      {
+          if (xmlHttp.readyState == 4)
+          {
+              var response = xmlHttp.responseText;
+              document.getElementById(cbfun).value = "ok";
+          }
+      }
+
+      function datebtn_click()
+      {
+          var X = document.getElementById("datebox").value;
+          var url = "/SetDate.lua?D=" + escape(X);
+          cbfun = "datebox_out";
+          xmlHttp.open("GET", url, true);
+          xmlHttp.onreadystatechange = cb2;
+          xmlHttp.send(null);
+      }
+
+      function Get_TemperVals_click()
+      {
+          var ValX,i,url;
+
+          for( i=0; i<16; ++i ) {
+              ValX = "val" + i.toString();
+              document.getElementById(ValX).innerHTML = "";
+          }
+
+          url = "/TemperGet.lua";
+          xmlHttp.open("GET", url, true);
+          xmlHttp.onreadystatechange = cb1;
+          xmlHttp.send(null);
+      }
+
+      function init_all()
+      {
+          document.getElementById("datebox").value     = "";
+          document.getElementById("datebox_out").value = "";
+      }
+
+   </script>
+</head>
+
+
+<body onload=init_all() bgcolor="#FFFDDD">
+
+    <br><br>
+    <input type=button value="Get Data" onClick=Get_TemperVals_click()>
+
+
+    <br><br>
+    <table border=0 cellspacing=0 cellpadding=1 id="adtable">
+
+      <tr><td width=160>Date/Time</td> <td width=260  id="val0" >&nbsp;</td></tr>
+
+      <tr class="evenrow"> <td> Ttemper      </td><td id="val1" >&nbsp;</td></tr>
+      <tr>                 <td> VPanel       </td><td id="val2" >&nbsp;</td></tr>
+      <tr class="evenrow"> <td> APanel       </td><td id="val3" >&nbsp;</td></tr>
+      <tr>                 <td> WPanel       </td><td id="val4" >&nbsp;</td></tr>
+      <tr class="evenrow"> <td> VBattery     </td><td id="val5" >&nbsp;</td></tr>
+      <tr>                 <td> SOC          </td><td id="val6" >&nbsp;</td></tr> 
+      <tr class="evenrow"> <td> Bat Status   </td><td id="val7" >&nbsp;</td></tr>
+      <tr>                 <td> Chg Status   </td><td id="val8" >&nbsp;</td></tr>
+      <tr class="evenrow"> <td> Energy D/M/Y </td><td id="val9" >&nbsp;</td></tr>
+      <tr>                 <td> Tprobe       </td><td id="val10">&nbsp;</td></tr> 
+      <tr class="evenrow"> <td> Tcharger     </td><td id="val11">&nbsp;</td></tr>
+      <tr>                 <td> chan13       </td><td id="val12">&nbsp;</td></tr>
+      <tr class="evenrow"> <td> chan14       </td><td id="val13">&nbsp;</td></tr>
+      <tr>                 <td> chan15       </td><td id="val14">&nbsp;</td></tr>
+      <tr class="evenrow"> <td> chan16       </td><td id="val15">&nbsp;</td></tr>
+
+    </table>
+
+<br>&nbsp;<br>
+
+<table border=0 cellspacing=0 cellpadding=1 id="SetDateTable">
+<tr><td width=520>
+    <fieldset><legend> Set Date </legend>
+        <table class=tableheadFixWidth border=0><tr class=CONFIGNORMALrow>
+            <td> MMDDhhmmYY </td>
+            <td> &nbsp; &nbsp; &nbsp; </td>
+            <td> <input type=text id=datebox size=10> </td>
+            <td> &nbsp; &nbsp; </td>
+            <td> <input type=button value=set onmousedown=datebtn_click()> </td>
+            <td> &nbsp; </td>
+            <td> <input type=text id=datebox_out size=2> </td> </tr>
+        </table>
+    </fieldset>
+</td></tr>
+</table>
+
+
+<br>&nbsp;<br>
+<br>&nbsp;<br>
+<br>&nbsp;<br>
+<br>&nbsp;<br>
+<br>&nbsp;<br>
+<br>&nbsp;<br>
+<br>&nbsp;<br>
+<br>&nbsp;<br>
+<br>&nbsp;<br>
+<br>&nbsp;<br>
+
+<script language="javascript">
+    Get_TemperVals_click()
+</script>
+
+
+</body>
+</html>
