@@ -32,7 +32,7 @@
 
 // "yes" if it is really there.
 // "no" if it is not there.
-#define USE_USB_TEMPER_DEVICE  "no"
+#define USE_USB_TEMPER_DEVICE  "yes"
 
 
 #define HIDNAME         "/dev/hidrawX"
@@ -512,7 +512,7 @@ int main( int argc, char *argv[] )
                 perror(tbuf);
             }
 
-            if( (Xd=open(G->MRfilename,O_WRONLY|O_CREAT,0666)) > 0 )
+            if( (Xd=open(G->MRfilename,O_WRONLY|O_TRUNC|O_CREAT,0666)) > 0 )
             {
                 write(Xd,tbuf,strlen(tbuf));
                 close(Xd);
