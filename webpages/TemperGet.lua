@@ -26,6 +26,11 @@ function main(env, con)
     local ctx = zmq.context()
     local skt = ctx:socket{ zmq.REQ, linger=0, rcvtimeo=1500, connect = "ipc:///var/tmp/TemperCommandChannel" }
 
+    if skt == nil then
+        ctx:destroy()
+        return
+    end
+
     skt:send( "ok" )
 
     SS = skt:recv()

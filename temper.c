@@ -69,6 +69,7 @@ static Globes    Globals;
 static void Find_the_Hidraw_Device( void );
 
 
+// ( /dev/hidrawX )
 /* ------------------------------------ */
 
 
@@ -418,7 +419,7 @@ static void do_cmdchannel_response( void )
 
 int main( int argc, char *argv[] )
 {
-    int               fd,lenr,temperature,fd1,lenslr;
+    int               fd,lenr,temperature,fd1,lenslr,Xd;
     time_t            midniteSecs,nowSecs;
     char              tbuf[240];
     char              tbuf2[181];
@@ -500,10 +501,10 @@ int main( int argc, char *argv[] )
         //
         if( check_thedate() == 1 )
         {
-            if( (fd=open(G->LOGfilename,O_WRONLY|O_APPEND|O_CREAT,0666)) > 0 )
+            if( (Xd=open(G->LOGfilename,O_WRONLY|O_APPEND|O_CREAT,0666)) > 0 )
             {
-                write(fd,tbuf,strlen(tbuf));
-                close(fd);
+                write(Xd,tbuf,strlen(tbuf));
+                close(Xd);
             }
             else
             {
@@ -511,10 +512,10 @@ int main( int argc, char *argv[] )
                 perror(tbuf);
             }
 
-            if( (fd=open(G->MRfilename,O_WRONLY|O_CREAT,0666)) > 0 )
+            if( (Xd=open(G->MRfilename,O_WRONLY|O_TRUNC|O_CREAT,0666)) > 0 )
             {
-                write(fd,tbuf,strlen(tbuf));
-                close(fd);
+                write(Xd,tbuf,strlen(tbuf));
+                close(Xd);
             }
             else
             {
