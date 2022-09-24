@@ -27,7 +27,7 @@ function find_hidraw()
     for D in p1:lines() do
 
         Adir = {}
-        p2 = io.popen('find /sys/bus/usb/devices/' .. D .. '/* -name \\*413D:2107\\* -print')
+        p2 = io.popen('find /sys/bus/usb/devices/' .. D .. '/* -name \\*1A86:E025\\* -print')
         for V in p2:lines() do
             Adir[#Adir+1] = V
         end

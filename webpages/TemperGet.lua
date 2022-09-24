@@ -37,9 +37,34 @@ function main(env, con)
 
         W[#W+1] = string.sub(SS,I,#SS-1)
 
-        tmpx = tonumber(W[4]) - 3.0
-        tmpy = (tonumber(W[23]) * 1.8) + 32
-        tmpz = (tonumber(W[15]) * 1.8) + 32                      -- just before SOC
+     -- tmpx = tonumber(W[4]) - 3.0
+        tmpx = tonumber(W[4])
+
+        if W[23] == nil then
+            tmpy = 0.8
+        else
+            tmpy = (tonumber(W[23]) * 1.8) + 32
+        end
+
+        if W[15] == nil then
+            tmpz = 0.9
+        else
+            tmpz = (tonumber(W[15]) * 1.8) + 32                      -- just before SOC
+        end
+
+        if W[5] == "<nosolar>" then
+            W[5]  = "0.1"
+            W[6]  = "0.2"
+            W[7]  = "0.3"
+            W[11] = "0.4"
+            W[16] = "0.5"
+            W[17] = "0.6"
+            W[18] = "0.7"
+            W[19] = "x"
+            W[20] = "x"
+            W[21] = "x"
+        end
+        
 
         T = {}
         T[#T+1] = string.format('"%s %s"',W[2],W[3])             -- date time
