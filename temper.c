@@ -426,6 +426,7 @@ int main( int argc, char *argv[] )
     pthread_t         Sign_threadID;
     zmq_pollitem_t    PollItems[2];
     Globes           *G = &Globals;
+    int               loop_count = 0;
 
     signal(SIGCHLD, SIG_IGN);
     if(fork()) {return 0;}                      // Parent returns. Child executes as background process
@@ -524,6 +525,11 @@ int main( int argc, char *argv[] )
             }
         }
 
+        if (++loop_count == 4)
+        {
+            loop_count = 0;
+            system("/usr/bin/lua5.1 /opt/Temper/do_upload.lua &");
+        }
 
         // Wait on the ZMQ until something happens.  The Signaler will hit every
         // 15 seconds, and the cmd channel requests will come in randomly
