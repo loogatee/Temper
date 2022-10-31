@@ -46,5 +46,32 @@ function find_hidraw()
     end
 end
 
+function find_hidraw_UsbRtc()
+    local p1,p2,Adir,D
+
+    p1 = io.popen('ls -1 /sys/bus/usb/devices')
+    for D in p1:lines() do
+
+        Adir = {}
+      --p2 = io.popen('find /sys/bus/usb/devices/' .. D .. '/* -name \\*413D:2107\\* -print')
+      --p2 = io.popen('find /sys/bus/usb/devices/' .. D .. '/* -name \\*1A86:E025\\* -print')
+        p2 = io.popen('find /sys/bus/usb/devices/' .. D .. '/* -name \\*04D8:00DD\\* -print')
+        for V in p2:lines() do
+            Adir[#Adir+1] = V
+        end
+        if #Adir == 1 then break end             -- 1st one with 1 hits: Done!
+
+    end
+
+    if #Adir ~= 1 then
+        return ""
+    else
+        p2 = io.popen( 'ls -1 ' .. Adir[1] .. '/hidraw' )
+        for D in p2:lines() do
+            return '/dev/' .. D
+        end
+    end
+end
+
 
 

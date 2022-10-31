@@ -99,7 +99,7 @@ file=io.open("/tmp/t1.json","w");
 file:write(S1)
 file:close()
 
-os.execute("/usr/bin/curl -F \"the_file=@/tmp/t1.json\" http://hh2.loogatee.com/RSSpageSave?Feedname=E\&League=HH_2029");
+os.execute("/usr/bin/curl -F \"the_file=@/tmp/t1.json\" http://hh2.loogatee.com/RSSpageSave?Feedname=E\\&League=HH_2029");
 
 
 
