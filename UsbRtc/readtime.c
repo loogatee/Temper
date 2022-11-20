@@ -21,15 +21,16 @@ typedef enum
 
 
 
-static const char *gWeeks[7] =
+static const char *gWeeks[8] =
 {
-   (const char *)"Sat",     // 0
+   (const char *)"xxx",     // 0
    (const char *)"Sun",
    (const char *)"Mon",
    (const char *)"Tue",
    (const char *)"Wed",
    (const char *)"Thu",
-   (const char *)"Fri"
+   (const char *)"Fri",
+   (const char *)"Sat"     // 7
 };
 
 
