@@ -5,27 +5,30 @@ os.execute("sleep 1")
 
 
 
-local SS,S1
+function GetData_FromZmqSocket()
+    local ctx = zmq.context()
+    local skt = ctx:socket{ zmq.REQ, linger=0, rcvtimeo=1500, connect = "ipc:///var/tmp/TemperCommandChannel" }
 
-local ctx = zmq.context()
-local skt = ctx:socket{ zmq.REQ, linger=0, rcvtimeo=1500, connect = "ipc:///var/tmp/TemperCommandChannel" }
+    if skt == nil then
+        ctx:destroy()
+        return nil
+    end
 
-if skt == nil then
+    skt:send( "ok" )
+
+    local Adata = skt:recv()
+
+    skt:close()
     ctx:destroy()
-    return
+
+    return Adata
 end
 
-skt:send( "ok" )
-
-SS = skt:recv()
-
-skt:close()
-ctx:destroy()
 
 
+local S1,i,j,I,W,tmpx,tmpy,T
 
-
-local i,j,I,W,tmpx,tmpy,T
+local SS = GetData_FromZmqSocket()
 
 
 if SS == nil then
@@ -98,6 +101,8 @@ S1 = string.format('{ "TemperData": [ %s ] }', table.concat(T,","))
 file=io.open("/tmp/t1.json","w");
 file:write(S1)
 file:close()
+
+
 
 os.execute("/usr/bin/curl -F \"the_file=@/tmp/t1.json\" http://hh2.loogatee.com/RSSpageSave?Feedname=E\\&League=HH_2029");
 
