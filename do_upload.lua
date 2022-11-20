@@ -1,6 +1,5 @@
 local zmq = require("lzmq")
 
-os.execute("sleep 1")
 
 
 --
@@ -86,14 +85,20 @@ function Convert_ToJSON(Istr)
     return rjson
 end
 
+function main()
+    os.execute("sleep 1")
 
-local S1 = GetData_FromZmqSocket()
-local S2 = Convert_ToJSON(S1)
+    local S1 = GetData_FromZmqSocket()
+    local S2 = Convert_ToJSON(S1)
 
-local file=io.open("/tmp/t1.json","w");
+    local file=io.open("/tmp/t1.json","w");
 
-file:write(S2)
-file:close()
+    file:write(S2)
+    file:close()
 
-os.execute("/usr/bin/curl -F \"the_file=@/tmp/t1.json\" http://hh2.loogatee.com/RSSpageSave?Feedname=E\\&League=HH_2029");
+    os.execute("/usr/bin/curl -F \"the_file=@/tmp/t1.json\" http://hh2.loogatee.com/RSSpageSave?Feedname=E\\&League=HH_2029");
+end
 
+
+
+main()
