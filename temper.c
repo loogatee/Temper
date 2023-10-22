@@ -33,6 +33,7 @@
 // "yes" if it is really there.
 // "no" if it is not there.
 #define USE_USB_TEMPER_DEVICE  "yes"
+#define USE_EPSOLAR            "no"
 
 
 #define HIDNAME         "/dev/hidrawX"
@@ -468,7 +469,14 @@ int main( int argc, char *argv[] )
             midniteSecs = Get_Midnite_Seconds();
         }
 
-        system("/usr/bin/python /opt/epsolar-tracer/info.py > /var/tmp/tmpabcX");   // Read Charger Data
+        if( !strcmp("yes",USE_EPSOLAR) )
+        {
+            system("/usr/bin/python /opt/epsolar-tracer/info.py > /var/tmp/tmpabcX");   // Read Charger Data
+        }
+        else
+        {
+            system("/usr/bin/touch /var/tmp/tmpabcX");   // Empty File
+        }
 
         fd1 = open("/var/tmp/tmpabcX",O_RDONLY);                                    // open same file we just wrote
         if( (lenslr=read(fd1,tbuf2,180)) >= 0 ) { tbuf2[lenslr] = 0; }              // NEED string termination

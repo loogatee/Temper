@@ -71,7 +71,7 @@ int main(void)
             exit(1);
         }
 
-        usleep(400000);
+        usleep(500000);
 
         UsbRtc_InitBus(FFD);
 
@@ -89,9 +89,9 @@ int main(void)
     //printf("Calling _i2cCancel.2\n");
     usleep(5000);
     //UsbRtc_i2cCancel(FFD);
-    //usleep(40000);
+    usleep(40000);
     close(FFD);
-    usleep(600000);
+    usleep(500000);
     return 0;
 }
 

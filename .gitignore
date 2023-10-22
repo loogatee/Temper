@@ -1,4 +1,4 @@
 temper
-./temper
 *.swp
 UsbRtc/readtime
+UsbRtc/settime
